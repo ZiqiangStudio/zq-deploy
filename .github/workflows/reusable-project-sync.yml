@@ -1,144 +1,77 @@
-name: Synchronize deployment Project
+name: Publish deployment event
 
 on:
   workflow_call:
     inputs:
-      service:
-        description: Project item title used as the service key.
-        type: string
-        required: true
       environment:
-        description: Deployment environment.
+        description: GitHub Environment and deployment target environment.
         type: string
         required: true
       server:
-        description: Deployment server.
+        description: Deployment server identifier.
         type: string
         required: true
       state:
-        description: Deployment state.
+        description: Platform deployment state.
         type: string
         required: true
       image-digest:
         description: Published image digest.
         type: string
         required: false
-      deployed-at:
-        description: Deployment timestamp in ISO 8601 format.
-        type: string
-        required: true
-      project-number:
-        description: Organization Project number.
-        type: string
-        default: '6'
-    secrets:
-      project_sync_token:
-        required: true
 
 permissions:
   contents: read
+  deployments: write
 
 jobs:
-  sync:
+  publish:
+    name: Publish deployment event
     runs-on: ubuntu-24.04
     steps:
-      - name: Update deployment Project
+      - name: Create deployment event
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
         env:
-          PROJECT_NUMBER: ${{ inputs.project-number }}
-          SERVICE: ${{ inputs.service }}
           DEPLOYMENT_ENVIRONMENT: ${{ inputs.environment }}
           DEPLOYMENT_SERVER: ${{ inputs.server }}
           DEPLOYMENT_STATE: ${{ inputs.state }}
           IMAGE_DIGEST: ${{ inputs.image-digest }}
-          DEPLOYED_AT: ${{ inputs.deployed-at }}
         with:
-          github-token: ${{ secrets.project_sync_token }}
+          github-token: ${{ github.token }}
           script: |
-            const projectNumber = Number(process.env.PROJECT_NUMBER);
-            if (!Number.isInteger(projectNumber)) throw new Error('project-number must be an integer');
-
-            const query = `
-              query($login: String!, $number: Int!) {
-                organization(login: $login) {
-                  projectV2(number: $number) {
-                    id
-                    fields(first: 100) {
-                      nodes {
-                        __typename
-                        ... on ProjectV2Field { id name }
-                        ... on ProjectV2SingleSelectField { id name options { id name } }
-                      }
-                    }
-                    items(first: 100) {
-                      nodes {
-                        id
-                        content {
-                          __typename
-                          ... on DraftIssue { title }
-                          ... on Issue { title }
-                          ... on PullRequest { title }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            `;
-
-            const data = await github.graphql(query, { login: 'ZiqiangStudio', number: projectNumber });
-            const project = data.organization?.projectV2;
-            if (!project) throw new Error(`Project ${projectNumber} was not found`);
-
-            const field = name => {
-              const value = project.fields.nodes.find(node => node.name === name);
-              if (!value) throw new Error(`Project field was not found: ${name}`);
-              return value;
+            const state = process.env.DEPLOYMENT_STATE;
+            const stateMap = {
+              部署中: 'in_progress',
+              成功: 'success',
+              失败: 'failure',
+              回滚: 'failure',
             };
-            const singleSelect = (name, optionName) => {
-              const value = field(name);
-              if (!value.options) throw new Error(`${name} is not a single-select field`);
-              const option = value.options.find(option => option.name === optionName);
-              if (!option) throw new Error(`Option ${optionName} was not found in ${name}`);
-              return [value.id, option.id];
-            };
-            const update = async (fieldId, value) => {
-              await github.graphql(`
-                mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $value: ProjectV2FieldValue!) {
-                  updateProjectV2ItemFieldValue(input: {
-                    projectId: $projectId
-                    itemId: $itemId
-                    fieldId: $fieldId
-                    value: $value
-                  }) { projectV2Item { id } }
-                }
-              `, { projectId: project.id, itemId: item.id, fieldId, value });
-            };
+            const deploymentState = stateMap[state] ?? state;
+            const validStates = new Set(['error', 'failure', 'inactive', 'in_progress', 'queued', 'success']);
+            if (!validStates.has(deploymentState)) throw new Error(`Unsupported deployment state: ${state}`);
 
-            let item = project.items.nodes.find(node => node.content?.title === process.env.SERVICE);
-            if (!item) {
-              const created = await github.graphql(`
-                mutation($projectId: ID!, $title: String!, $body: String!) {
-                  addProjectV2DraftIssue(input: { projectId: $projectId, title: $title, body: $body }) {
-                    projectItem { id }
-                  }
-                }
-              `, {
-                projectId: project.id,
-                title: process.env.SERVICE,
-                body: `服务：${process.env.SERVICE}`,
-              });
-              item = created.addProjectV2DraftIssue.projectItem;
-            }
-
-            await update(field('服务').id, { text: process.env.SERVICE });
-            const [environmentField, environmentOption] = singleSelect('环境', process.env.DEPLOYMENT_ENVIRONMENT);
-            await update(environmentField, { singleSelectOptionId: environmentOption });
-            const [serverField, serverOption] = singleSelect('服务器', process.env.DEPLOYMENT_SERVER);
-            await update(serverField, { singleSelectOptionId: serverOption });
-            const [stateField, stateOption] = singleSelect('部署状态', process.env.DEPLOYMENT_STATE);
-            await update(stateField, { singleSelectOptionId: stateOption });
-            if (process.env.IMAGE_DIGEST) await update(field('镜像 Digest').id, { text: process.env.IMAGE_DIGEST });
-            await update(field('最近部署').id, { date: process.env.DEPLOYED_AT.slice(0, 10) });
-
-            core.info(`Project ${projectNumber}: ${process.env.SERVICE} -> ${process.env.DEPLOYMENT_STATE}`);
+            const payload = JSON.stringify({
+              server: process.env.DEPLOYMENT_SERVER,
+              platform_state: state,
+              image_digest: process.env.IMAGE_DIGEST || null,
+              deployed_at: new Date().toISOString(),
+            });
+            const { data: deployment } = await github.rest.repos.createDeployment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.sha,
+              environment: process.env.DEPLOYMENT_ENVIRONMENT,
+              description: `部署 ${state}：${process.env.DEPLOYMENT_SERVER}`,
+              payload,
+              auto_merge: false,
+              required_contexts: [],
+            });
+            await github.rest.repos.createDeploymentStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              deployment_id: deployment.id,
+              state: deploymentState,
+              environment: process.env.DEPLOYMENT_ENVIRONMENT,
+              description: `部署 ${state}：${process.env.DEPLOYMENT_SERVER}`,
+            });
+            core.info(`Published deployment ${deployment.id} for ${context.repo.full_name}`);
