@@ -1,0 +1,23 @@
+schema: zq-platform/service/v1
+required:
+  - id
+  - server
+  - source
+  - runtime
+  - data
+rules:
+  source.repo: GitHub repository or unknown for unmanaged services
+  source.rebuild.application: true, false, or unverified
+  source.rebuild.data: true, false, or unknown
+  runtime.compose_file: required for Compose-managed services
+  data.persistent: every stateful path must have kind, path, and backup_class
+  data.backup_class: must name a restore procedure, not only a backup target
+  cleanup_guard: must be a concrete precondition before deletion
+security:
+  forbidden_fields:
+    - password
+    - token
+    - secret
+    - private_key
+    - connection_string
+    - env_value

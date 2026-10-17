@@ -1,0 +1,14 @@
+schema: zq-platform/backup/v1
+storage:
+  provider: oss
+  bucket: zq-platform-backups
+  encryption: kms-or-client-side
+  local_copy_is_authoritative: false
+retention:
+  daily: 7
+  weekly: 4
+  monthly: 12
+operations:
+  backup: write a new dated backup and verify its checksum
+  restore-check: restore into an isolated target and run smoke checks
+  production-restore: manual approval plus explicit change record

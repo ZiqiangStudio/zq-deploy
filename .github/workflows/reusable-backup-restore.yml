@@ -1,0 +1,56 @@
+name: Reusable backup and restore check
+
+on:
+  workflow_call:
+    inputs:
+      operation:
+        description: backup or restore-check.
+        type: string
+        required: true
+      service-id:
+        description: Service identifier from services/inventory.yml.
+        type: string
+        required: true
+      environment:
+        description: GitHub Environment protecting the operation.
+        type: string
+        default: staging
+      adapter-script:
+        description: Repository-local backup adapter.
+        type: string
+        default: .platform/backup.sh
+      runner:
+        description: Hosted or self-hosted runner label.
+        type: string
+        default: ubuntu-24.04
+
+permissions:
+  contents: read
+
+jobs:
+  backup-restore:
+    name: ${{ inputs.operation }} ${{ inputs.service-id }}
+    runs-on: ${{ inputs.runner }}
+    environment: ${{ inputs.environment }}
+    concurrency:
+      group: zq-platform-backup-${{ inputs.service-id }}-${{ inputs.environment }}
+      cancel-in-progress: false
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      - name: Validate adapter
+        shell: bash
+        run: |
+          test -x "${{ inputs.adapter-script }}" || {
+            echo "Backup adapter must be executable: ${{ inputs.adapter-script }}" >&2
+            exit 1
+          }
+
+      - name: Run backup or restore check
+        env:
+          BACKUP_OPERATION: ${{ inputs.operation }}
+          SERVICE_ID: ${{ inputs.service-id }}
+          BACKUP_ENVIRONMENT: ${{ inputs.environment }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: bash "${{ inputs.adapter-script }}"

@@ -1,0 +1,271 @@
+schema: zq-platform/v1
+observed_at: "2026-10-17"
+
+servers:
+  zq1:
+    address: 47.99.93.160
+    role: staging-candidate
+    docker_engine: "28.3.3"
+    compose: "2.17.2"
+    observed: {running_containers: 19, unhealthy_containers: 1, failed_systemd_units: 0}
+  zq2:
+    address: 121.40.155.61
+    role: production-candidate
+    docker_engine: "23.0.3"
+    compose: "2.17.2"
+    observed: {running_containers: 19, unhealthy_containers: 0, failed_systemd_units: 0}
+
+services:
+  - id: zq-index
+    server: zq1
+    environment: unknown
+    source: {repo: ZiqiangStudio/zq_index, url: https://github.com/ZiqiangStudio/zq_index, rebuild: {application: true, data: true}}
+    runtime: {compose_project: zq_index_v2, compose_file: /home/zq_index/zq_index_v2/docker-compose.yml, compose_service: vue_app, container: zq_index}
+    ingress: {hosts: [ziqiang.net.cn, www.ziqiang.net.cn], via: traefik}
+    data: {dependencies: [], persistent: [{kind: none}], backup_class: none}
+    cleanup_guard: verify_dns_and_smoke_test
+
+  - id: recruitment-staging
+    server: zq1
+    environment: staging-candidate
+    source: {repo: ZiqiangStudio/zq_recruitment_backend, url: https://github.com/ZiqiangStudio/zq_recruitment_backend, rebuild: {application: true, data: false}}
+    runtime:
+      compose_project: backend-test
+      compose_file: /home/zq_recruitment/backend-test/docker-compose.yml
+      compose_services: [django, celeryworker, caddy, redis, meili, office]
+      containers: [zq_recruitment_backend-test-django, zq_recruitment_backend-test-celeryworker, zq_recruitment_backend-test-caddy, zq_recruitment_backend-test-redis, zq_recruitment_backend-test-meili, zq_recruitment_backend-test-office]
+    ingress: {hosts: [api.test.recruitment.ziqiang.net.cn], via: traefik}
+    data:
+      dependencies: [redis, meilisearch]
+      persistent:
+        - {kind: env, path: /home/zq_recruitment/backend-test/.env}
+        - {kind: meilisearch-index, path: /home/zq_recruitment/backend-test/meili_data}
+        - {kind: redis-volume, path: docker-volume:backend-test-redis}
+      backup_class: rebuild-index-and-verify
+    cleanup_guard: preserve_env_and_reindex_before_cleanup
+
+  - id: speakquest
+    server: zq1
+    environment: unknown
+    source: {repo: ZiqiangStudio/zq_speakquest_backend, url: https://github.com/ZiqiangStudio/zq_speakquest_backend, rebuild: {application: true, data: false}}
+    runtime:
+      compose_projects: [speakquest, speakquest_backend]
+      compose_files: [/home/zq_speakquest/app/docker-compose.yml, /home/zq_speakquest/app/Speak1/docker-compose.yml]
+      compose_services: [nginx, speakquest, audio-service]
+      containers: [speakquest-nginx-1, speakquest-speakquest-1, speakquest-audio-service-1, speakquest_backend-speakquest-1, speakquest_backend-audio-service-1]
+    ingress: {hosts: [api.speakquest.temp.ziqiang.net.cn], via: traefik, direct_ports: [8081]}
+    data:
+      dependencies: []
+      persistent:
+        - {kind: application-data, path: /home/zq_speakquest/app/backend/data}
+        - {kind: media, path: /home/zq_speakquest/app/backend/media}
+        - {kind: application-data, path: /home/zq_speakquest/app/Speak1/pro2/speakquest/data}
+        - {kind: media, path: /home/zq_speakquest/app/Speak1/pro2/speakquest/media}
+        - {kind: env, path: /home/zq_speakquest/app/Speak1/audio_service/.env.runtime}
+      backup_class: object-and-config
+    cleanup_guard: archive_media_and_verify_rebuild
+
+  - id: match
+    server: zq1
+    environment: unknown
+    source: {repo: ZiqiangStudio/zq_match_sevenday_backend, url: https://github.com/ZiqiangStudio/zq_match_sevenday_backend, rebuild: {application: true, data: false}}
+    runtime:
+      compose_project: zq_match_sevenday_backend
+      compose_file: /home/match/zq_match_sevenday_backend/docker-compose.yml
+      compose_services: [django, caddy, redis]
+      containers: [match-django, zq_match_sevenday_backend-caddy-1, zq_match_sevenday_backend-redis-1]
+    ingress: {hosts: [match.ziqiang.net.cn], via: traefik, direct_ports: [8000, 8080]}
+    data:
+      dependencies: [redis]
+      persistent:
+        - {kind: env, path: /home/match/zq_match_sevenday_backend/.env}
+        - {kind: application-data, path: docker-volume:zq_match_sevenday_backend_django_data}
+        - {kind: redis-volume, path: docker-volume:zq_match_sevenday_backend_redis_data}
+      backup_class: database-and-queue
+    cleanup_guard: restore_test_before_volume_cleanup
+
+  - id: jiadian
+    server: zq1
+    environment: unknown
+    source: {repo: ZiqiangStudio/zq_jiadian_backend, url: https://github.com/ZiqiangStudio/zq_jiadian_backend, rebuild: {application: unverified, data: unknown}}
+    runtime: {compose_project: unmanaged, container: jiadian-backend, image: crpi-u48q8genb3zormkm.cn-hangzhou.personal.cr.aliyuncs.com/jiadian/jiadian-backend:v1.2}
+    ingress: {hosts: [api.jiadian.temp.ziqiang.net.cn], via: traefik}
+    data: {dependencies: [], persistent: [], backup_class: configuration}
+    cleanup_guard: reproduce_private_image_and_runtime_config
+
+  - id: groupwork
+    server: zq1
+    environment: unknown
+    source: {repo: unknown, rebuild: {application: false, data: unknown}}
+    runtime: {compose_project: text, compose_file: /home/zq_groupwork/text/docker-compose.yml, container: zq-groupwork, image: eachic/zq-groupwork}
+    ingress: {hosts: [api.groupwork.temp.ziqiang.net.cn], via: traefik}
+    data: {dependencies: [], persistent: [], backup_class: configuration}
+    cleanup_guard: locate_source_or_preserve_image
+
+  - id: deeplx
+    server: zq1
+    environment: unknown
+    source: {repo: upstream/OwO-Network/DeepLX, url: https://github.com/OwO-Network/DeepLX, rebuild: {application: true, data: true}}
+    runtime: {compose_project: deeplx, compose_file: /home/ecs-user/docker/deeplx/docker-compose.yml, container: deeplx-deeplx-1, image: ghcr.io/owo-network/deeplx:latest}
+    ingress: {hosts: [deeplx.server7.ziqiang.net.cn], via: traefik}
+    data: {dependencies: [], persistent: [], backup_class: none}
+    cleanup_guard: save_route_and_redeploy_smoke_test
+
+  - id: fuguang-mysql
+    server: zq1
+    environment: unknown
+    source: {repo: unknown, rebuild: {application: false, data: false}}
+    runtime: {compose_project: common, compose_file: /home/zq_meal/FuGuang/common/docker-compose.yml, container: fuguang_mysql, image: mysql}
+    ingress: {direct_ports: [3306]}
+    data:
+      dependencies: []
+      persistent:
+        - {kind: mysql-data, path: /home/zq_meal/lib/mysql}
+        - {kind: mysql-config, path: /home/zq_meal/FuGuang/common/mysql.cnf}
+      backup_class: mysql-logical-and-volume
+    cleanup_guard: verified_backup_and_restore
+
+  - id: electric-scooter-mysql
+    server: zq1
+    environment: unknown
+    source: {repo: ZiqiangStudio/zq_electric_scooter_backend_fork, url: https://github.com/ZiqiangStudio/zq_electric_scooter_backend_fork, rebuild: {application: true, data: false}}
+    runtime: {compose_project: debug, compose_file: /home/zq_ddc/debug/docker-compose-prod.yml, container: zq_electric_scooter_prod_mysql, image: mysql}
+    data:
+      dependencies: []
+      persistent: [{kind: mysql-data, path: /home/zq_ddc/debug/data2/mysql}]
+      backup_class: mysql-logical-and-volume
+    cleanup_guard: verified_backup_and_restore
+
+  - id: traefik-zq1
+    server: zq1
+    environment: infrastructure
+    source: {repo: upstream/traefik, rebuild: {application: true, data: false}}
+    runtime: {compose_project: traefik, compose_file: /home/ecs-user/docker/traefik/docker-compose.yml, container: traefik-traefik-1, image: traefik:v2.10}
+    ingress: {direct_ports: [80, 443]}
+    data:
+      dependencies: []
+      persistent:
+        - {kind: certificate, path: /home/ecs-user/docker/traefik/acme}
+        - {kind: config, path: /home/ecs-user/docker/traefik/traefik.yml}
+      backup_class: certificate-and-config
+    cleanup_guard: backup_acme_and_validate_routes
+
+  - id: recruitment-production
+    server: zq2
+    environment: production-candidate
+    source: {repo: ZiqiangStudio/zq_recruitment_backend, url: https://github.com/ZiqiangStudio/zq_recruitment_backend, rebuild: {application: true, data: false}}
+    runtime:
+      compose_project: zq_recruitment_backend
+      compose_file: /home/zq_recruitment/backend/docker-compose.yml
+      compose_services: [django, celeryworker, caddy, redis, meili, office]
+      containers: [zq_recruitment_backend-django-1, zq_recruitment_backend-celeryworker-1, zq_recruitment_backend-caddy-1, zq_recruitment_backend-redis-1, zq_recruitment_backend-meili-1, zq_recruitment_backend-office-1]
+    ingress: {hosts: [api.recruitment.ziqiang.net.cn], via: traefik}
+    data:
+      dependencies: [redis, meilisearch]
+      persistent:
+        - {kind: env, path: /home/zq_recruitment/backend/.env}
+        - {kind: meilisearch-index, path: /home/zq_recruitment/backend/meili_data}
+        - {kind: redis-volume, path: docker-volume:recruitment-redis}
+      backup_class: database-and-index
+    cleanup_guard: verify_new_deployment_and_reindex
+
+  - id: recruitment-frontend
+    server: zq2
+    environment: production-candidate
+    source: {repo: ZiqiangStudio/zq_recruitment_frontend, url: https://github.com/ZiqiangStudio/zq_recruitment_frontend, rebuild: {application: true, data: true}}
+    runtime: {compose_project: frontend, compose_file: /home/zq_recruitment/frontend/docker-compose.yml, compose_service: frontend, container: recruitment-frontend}
+    ingress: {hosts: [recruitment.ziqiang.net.cn], via: traefik}
+    data: {dependencies: [], persistent: [], backup_class: none}
+    cleanup_guard: verify_static_build_and_smoke_test
+
+  - id: recruitment-intro
+    server: zq2
+    environment: production-candidate
+    source: {repo: ZiqiangStudio/zq_recruitment_intro, url: https://github.com/ZiqiangStudio/zq_recruitment_intro, rebuild: {application: true, data: true}}
+    runtime: {compose_project: intro, compose_file: /home/zq_recruitment/intro/docker-compose.yml, compose_service: frontend, container: recruitment-intro}
+    ingress: {hosts: [intro.recruitment.ziqiang.net.cn], via: traefik}
+    data: {dependencies: [], persistent: [], backup_class: none}
+    cleanup_guard: verify_static_build_and_smoke_test
+
+  - id: auth
+    server: zq2
+    environment: production-candidate
+    source: {repo: ZiqiangStudio/zq_auth_backend, url: https://github.com/ZiqiangStudio/zq_auth_backend, rebuild: {application: true, data: false}}
+    runtime: {compose_project: backend, compose_file: /home/zq_auth/backend/docker-compose.yml, compose_services: [django, caddy, redis], containers: [backend_django_1, backend_caddy_1, backend_redis_1]}
+    ingress: {hosts: [api.cas.ziqiang.net.cn], via: traefik}
+    data:
+      dependencies: [redis]
+      persistent:
+        - {kind: env, path: /home/zq_auth/backend/.env}
+        - {kind: redis-volume, path: docker-volume:auth-redis}
+      backup_class: configuration-and-session-policy
+    cleanup_guard: confirm_session_policy_and_verify_login
+
+  - id: ai-playground
+    server: zq2
+    environment: production-candidate
+    source: {repo: ZiqiangStudio/WHU-AI-Playground_backend, url: https://github.com/ZiqiangStudio/WHU-AI-Playground_backend, rebuild: {application: true, data: false}}
+    runtime:
+      compose_project: whu-aiplayground
+      compose_file: /home/zq_aicom/WHU-AI-Playground_backend/deploy/docker-compose.prod.yml
+      compose_services: [backend, ainformer, rsshub, rankings-worker, redis, postgres]
+      containers: [whu-aiplayground-backend-1, whu-aiplayground-ainformer-1, whu-aiplayground-rsshub-1, whu-aiplayground-rankings-worker-1, whu-aiplayground-redis-1, whu-aiplayground-postgres-1]
+    ingress: {hosts: [whuaihub.ziqiang.net.cn], via: traefik}
+    data:
+      dependencies: [postgres, redis]
+      persistent:
+        - {kind: env, path: /home/zq_aicom/WHU-AI-Playground_backend/deploy/.env}
+        - {kind: postgres-data, path: docker-volume:whu-aiplayground_postgres_data}
+        - {kind: redis-data, path: docker-volume:whu-aiplayground_rsshub_redis_data}
+      backup_class: postgres-and-queue
+    cleanup_guard: verified_restore_and_external-rankings-check
+
+  - id: new-api
+    server: zq2
+    environment: unknown
+    source: {repo: upstream/QuantumNous/new-api, url: https://github.com/QuantumNous/new-api, rebuild: {application: true, data: false}}
+    runtime: {compose_project: unmanaged, container: new-api, image: calciumion/new-api:latest}
+    ingress: {direct_ports: [3000]}
+    data:
+      dependencies: []
+      persistent: [{kind: application-database-and-config, path: /opt/new-api/data}]
+      backup_class: application-data
+    cleanup_guard: backup_data_and_verify_provider_configuration
+
+  - id: traefik-zq2
+    server: zq2
+    environment: infrastructure
+    source: {repo: upstream/traefik, rebuild: {application: true, data: false}}
+    runtime: {compose_project: traefik, compose_file: /home/ecs-user/docker/traefik/docker-compose.yml, container: traefik-traefik-1, image: traefik:v2.9}
+    ingress: {direct_ports: [80, 443]}
+    data:
+      dependencies: []
+      persistent:
+        - {kind: certificate, path: /home/ecs-user/docker/traefik/acme}
+        - {kind: config, path: /home/ecs-user/docker/traefik/traefik.yml}
+      backup_class: certificate-and-config
+    cleanup_guard: backup_acme_and_validate_routes
+
+  - id: rabbitmq
+    server: zq2
+    environment: infrastructure
+    source: {repo: upstream/rabbitmq, rebuild: {application: true, data: false}}
+    runtime: {manager: systemd, service: rabbitmq-server}
+    ingress: {direct_ports: [4369, 5672, 15672, 25672]}
+    data:
+      dependencies: []
+      persistent: [{kind: queue-state, path: host-managed}]
+      backup_class: definitions-and-message-policy
+    cleanup_guard: drain_or_replay_queues_and_export_definitions
+
+  - id: host-redis
+    server: zq2
+    environment: infrastructure
+    source: {repo: upstream/redis, rebuild: {application: true, data: unknown}}
+    runtime: {manager: systemd, service: redis-server}
+    ingress: {direct_ports: [6379], bind: 127.0.0.1}
+    data:
+      dependencies: []
+      persistent: [{kind: redis-state, path: host-managed}]
+      backup_class: confirm-cache-or-state
+    cleanup_guard: identify_consumers_before_restart

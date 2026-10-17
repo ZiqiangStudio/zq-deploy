@@ -31,6 +31,10 @@ on:
         description: GitHub Environment used for deployment protection and secrets.
         type: string
         default: staging
+      deploy-runner:
+        description: Hosted runner or one custom self-hosted runner label.
+        type: string
+        default: ubuntu-24.04
     outputs:
       artifact-name:
         description: Uploaded artifact name.
@@ -86,8 +90,11 @@ jobs:
     name: Deploy static artifact
     needs: build
     if: ${{ inputs.deploy && github.event_name != 'pull_request' }}
-    runs-on: ubuntu-24.04
+    runs-on: ${{ inputs.deploy-runner }}
     environment: ${{ inputs.environment }}
+    concurrency:
+      group: zq-platform-deploy-${{ github.repository }}-${{ inputs.environment }}
+      cancel-in-progress: false
     permissions:
       contents: read
       id-token: write

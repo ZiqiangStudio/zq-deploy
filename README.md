@@ -1,36 +1,54 @@
 # zq-platform
 
-自强 Studio 的组织级 GitHub Actions 部署基线。
+自强 Studio 的组织级部署基线：服务台账、数据依赖、Compose 运行模板、可复用 GitHub Actions 和备份恢复契约都放在这里。业务仓库只描述自己的构建入口和很薄的部署适配器，不复制流水线实现。
 
-这个仓库只维护跨项目共用的流水线接口。项目自身的云厂商命令、域名、服务器地址和业务配置放在项目仓库的 `.platform/deploy.sh`，通过 GitHub Environment 注入密钥。这样流水线可以统一升级，部署目标仍由项目明确负责。
+## 目录
 
-## 约定
+- `services/inventory.yml`：两台现有服务器的观察台账。它记录服务、仓库、入口、数据和清理保护项，不记录密钥。
+- `contracts/service.schema.yml`：业务仓库接入平台时需要满足的字段。
+- `templates/compose/compose.yml`：无状态应用的 Compose 基线。数据库、Redis、RabbitMQ 和 Volume 不由这个模板自动创建。
+- `.github/workflows/reusable-container.yml`：容器项目的统一构建、推送和部署接口。
+- `.github/workflows/reusable-static.yml`：静态站点的统一构建和部署接口。
+- `.github/workflows/reusable-backup-restore.yml`：备份和恢复演练接口，只调用业务仓库提供的适配器。
+- `backup/`：备份分层、保留策略、恢复演练和命名约定。
+- `examples/`：业务仓库中的最小调用示例。
 
-每个项目至少要有：
+## 统一接入方式
 
-- 锁定依赖版本的 lockfile；
-- 可重复执行的构建命令；
-- 明确的产物路径，或可构建的 `Dockerfile`；
-- 需要自动部署时提供 `.platform/deploy.sh`；
-- `staging` 和 `production` 两个 GitHub Environment。
+业务仓库保留一个很薄的调用文件：
 
-部署脚本通过环境变量接收平台输入：
+```yaml
+jobs:
+  deploy:
+    uses: ZiqiangStudio/zq-platform/.github/workflows/reusable-container.yml@<pinned-ref>
+    with:
+      image: ghcr.io/ziqiangstudio/example-service
+      deploy: ${{ github.event_name == 'push' }}
+      environment: ${{ startsWith(github.ref, 'refs/tags/') && 'production' || 'staging' }}
+      deploy-script: .platform/deploy.sh
+    secrets: inherit
+```
+
+业务仓库必须提供：
+
+- 可重复执行的构建入口和锁定依赖；
+- `Dockerfile` 或明确的静态产物目录；
+- `.platform/deploy.sh`，接收平台传入的 `IMAGE_REF` 或 `ARTIFACT_PATH`；
+- `.platform/backup.sh`，接收 `BACKUP_OPERATION=backup|restore-check`；
+- `staging`、`production` Environment；
+- 健康检查和回滚方式。
+
+部署适配器接收这些变量：
 
 ```text
 DEPLOY_ENVIRONMENT  staging 或 production
-ARTIFACT_PATH       静态构建产物目录（静态项目）
-IMAGE_REF           已发布且带 digest 的容器镜像（容器项目）
+ARTIFACT_PATH       静态构建产物目录
+IMAGE_REF           已发布且带 digest 的容器镜像
 GITHUB_SHA          本次构建对应的提交
 ```
 
-脚本应做到幂等：同一提交重复执行不会产生第二份不可追踪的发布状态。生产 Environment 配置必需的审批人和分支限制；云平台优先使用 GitHub OIDC，不在仓库中保存长期云密钥。
+生产部署只允许受保护的 Environment 触发，并使用固定的工作流版本或完整 commit SHA。部署脚本必须幂等，不能执行删除 Volume、删除数据库或无条件清理镜像。
 
-## 使用方式
+## 当前边界
 
-项目复制 `examples/static-consumer.yml` 或 `examples/container-consumer.yml` 到 `.github/workflows/deploy.yml`，把构建参数、镜像名和部署脚本改成项目实际值。初期示例使用 `@main` 便于接入；平台发布第一个版本后，项目应改为固定版本或完整 commit SHA。
-
-Pull Request 只执行检查和构建，不发布；合并到 `main` 自动发布 staging；版本 Tag 发布 production，并由 Environment 保护规则控制审批。
-
-## 迁移顺序
-
-先接入静态站点，再接入 Node SSR 和后端容器，最后迁移小程序和 npm/Python 包发布。不要让项目复制工作流实现细节；新增的通用逻辑应回到这里维护。
+这次提交只建立配置、模板和流程契约，不连接 zq1/zq2，不迁移数据，也不删除线上容器或 Volume。真正接入项目时，先在隔离环境完成构建、恢复和健康检查，再启用生产 Environment。

@@ -8,11 +8,13 @@ on:
 
 jobs:
   deploy:
-    uses: ZiqiangStudio/zq-platform/.github/workflows/reusable-container.yml@main
+    uses: ZiqiangStudio/zq-platform/.github/workflows/reusable-container.yml@<pinned-ref>
     with:
       image: ghcr.io/ziqiangstudio/example-service
       deploy: ${{ github.event_name == 'push' }}
       environment: ${{ startsWith(github.ref, 'refs/tags/') && 'production' || 'staging' }}
+      deploy-runner: ubuntu-24.04
+    secrets: inherit
     permissions:
       contents: read
       packages: write

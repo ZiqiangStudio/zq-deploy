@@ -1,0 +1,19 @@
+name: Backup or restore check
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: backup or restore-check
+        required: true
+        type: choice
+        options: [backup, restore-check]
+
+jobs:
+  backup:
+    uses: ZiqiangStudio/zq-platform/.github/workflows/reusable-backup-restore.yml@<pinned-ref>
+    with:
+      operation: ${{ inputs.operation }}
+      service-id: example-service
+      environment: staging
+    secrets: inherit
