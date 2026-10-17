@@ -1,14 +1,14 @@
 # zq-platform
 
-自强 Studio 的组织级部署基线：服务台账、数据依赖、Compose 运行模板、可复用 GitHub Actions 和备份恢复契约都放在这里。业务仓库只描述自己的构建入口和很薄的部署适配器，不复制流水线实现。
+自强 Studio 的组织级部署基线：Compose 运行模板、可复用 GitHub Actions、部署 Project 同步和备份恢复契约都放在这里。业务仓库只描述自己的构建入口和很薄的部署适配器，不复制流水线实现。
 
 ## 目录
 
-- `services/inventory.yml`：两台现有服务器的观察台账。它记录服务、仓库、入口、数据和清理保护项，不记录密钥。
 - `contracts/service.schema.yml`：业务仓库接入平台时需要满足的字段。
 - `templates/compose/compose.yml`：无状态应用的 Compose 基线。数据库、Redis、RabbitMQ 和 Volume 不由这个模板自动创建。
 - `.github/workflows/reusable-container.yml`：容器项目的统一构建、推送和部署接口。
 - `.github/workflows/reusable-static.yml`：静态站点的统一构建和部署接口。
+- `.github/workflows/reusable-project-sync.yml`：将部署结果写入组织 Project。
 - `.github/workflows/reusable-backup-restore.yml`：备份和恢复演练接口，只调用业务仓库提供的适配器。
 - `backup/`：备份分层、保留策略、恢复演练和命名约定。
 - `examples/`：业务仓库中的最小调用示例。
@@ -24,7 +24,7 @@ jobs:
     with:
       image: ghcr.io/ziqiangstudio/example-service
       deploy: ${{ github.event_name == 'push' }}
-      environment: ${{ startsWith(github.ref, 'refs/tags/') && 'production' || 'staging' }}
+      environment: production
       deploy-script: .platform/deploy.sh
     secrets: inherit
 ```
@@ -35,13 +35,13 @@ jobs:
 - `Dockerfile` 或明确的静态产物目录；
 - `.platform/deploy.sh`，接收平台传入的 `IMAGE_REF` 或 `ARTIFACT_PATH`；
 - `.platform/backup.sh`，接收 `BACKUP_OPERATION=backup|restore-check`；
-- `staging`、`production` Environment；
+- `production` Environment；
 - 健康检查和回滚方式。
 
 部署适配器接收这些变量：
 
 ```text
-DEPLOY_ENVIRONMENT  staging 或 production
+DEPLOY_ENVIRONMENT  production 或明确命名的测试环境
 ARTIFACT_PATH       静态构建产物目录
 IMAGE_REF           已发布且带 digest 的容器镜像
 GITHUB_SHA          本次构建对应的提交
