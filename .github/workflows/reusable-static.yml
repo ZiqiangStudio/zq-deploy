@@ -75,7 +75,7 @@ jobs:
         run: ${{ inputs.build-command }}
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: static-${{ github.sha }}
           path: ${{ inputs.working-directory }}/${{ inputs.artifact-path }}
