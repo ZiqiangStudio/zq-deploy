@@ -12,7 +12,7 @@ jobs:
     with:
       image: ghcr.io/ziqiangstudio/example-service
       deploy: ${{ github.event_name == 'push' }}
-      environment: production
+      environment: ${{ startsWith(github.ref, 'refs/tags/') && 'production' || 'staging' }}
       deploy-runner: ubuntu-24.04
     secrets: inherit
     permissions:
