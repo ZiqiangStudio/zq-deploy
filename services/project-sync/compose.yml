@@ -1,0 +1,20 @@
+services:
+  project-sync:
+    image: ${PROJECT_SYNC_IMAGE:?PROJECT_SYNC_IMAGE is required}
+    restart: unless-stopped
+    env_file:
+      - .env
+    networks:
+      - traefik
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: traefik
+      traefik.http.routers.project-sync.rule: Host(`project-sync.ziqiang.net.cn`)
+      traefik.http.routers.project-sync.entrypoints: websecure
+      traefik.http.routers.project-sync.tls: "true"
+      traefik.http.routers.project-sync.tls.certresolver: ziqiang-ali
+      traefik.http.services.project-sync.loadbalancer.server.port: "8080"
+
+networks:
+  traefik:
+    external: true
