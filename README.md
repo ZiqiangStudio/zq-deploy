@@ -62,7 +62,8 @@ jobs:
   deploy:
     uses: ZiqiangStudio/zq-platform/.github/workflows/reusable-container.yml@<pinned-ref>
     with:
-      image: ghcr.io/ziqiangstudio/example-service
+      images: >-
+        [{"name":"default","image":"ghcr.io/ziqiangstudio/example-service"}]
       deploy: ${{ github.event_name == 'push' }}
       environment: production
       deploy-script: .platform/deploy.sh
@@ -84,7 +85,7 @@ jobs:
 
 - 可重复执行的构建入口和锁定依赖；
 - `Dockerfile` 或明确的静态产物目录；
-- `.platform/deploy.sh`，接收平台传入的 `IMAGE_REF` 或 `ARTIFACT_PATH`；
+- `.platform/deploy.sh`，接收平台传入的 `IMAGE_REFS` 或 `ARTIFACT_PATH`；
 - `.platform/backup.sh`，接收 `BACKUP_OPERATION=backup|restore-check`；
 - `production` Environment；
 - 健康检查和回滚方式。
@@ -94,7 +95,7 @@ jobs:
 ```text
 DEPLOY_ENVIRONMENT  production 或明确命名的测试环境
 ARTIFACT_PATH       静态构建产物目录
-IMAGE_REF           已发布且带 digest 的容器镜像
+IMAGE_REFS           JSON 对象，值为已发布且带 digest 的容器镜像
 GITHUB_SHA          本次构建对应的提交
 ```
 
