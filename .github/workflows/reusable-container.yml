@@ -118,6 +118,22 @@ jobs:
       - name: Check out deployment adapter
         uses: actions/checkout@v7
 
+      - name: Log in to GitHub Container Registry on deploy runner
+        if: ${{ inputs.registry == 'ghcr.io' }}
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to external container registry on deploy runner
+        if: ${{ inputs.registry != 'ghcr.io' }}
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ inputs.registry }}
+          username: ${{ secrets.registry_username }}
+          password: ${{ secrets.registry_password }}
+
       - name: Run deployment adapter
         env:
           DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
