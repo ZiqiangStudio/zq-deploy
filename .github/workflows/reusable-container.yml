@@ -136,6 +136,7 @@ jobs:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
-          REGISTRY_USERNAME: ${{ github.actor }}
-          REGISTRY_TOKEN: ${{ github.token }}
+          REGISTRY_HOST: ${{ inputs.registry }}
+          REGISTRY_USERNAME: ${{ inputs.registry == 'ghcr.io' && github.actor || secrets.registry_username }}
+          REGISTRY_TOKEN: ${{ inputs.registry == 'ghcr.io' && github.token || secrets.registry_password }}
         run: bash "${{ inputs.deploy-script }}"
