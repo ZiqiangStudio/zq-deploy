@@ -50,7 +50,7 @@ jobs:
         working-directory: ${{ inputs.working-directory }}
     steps:
       - name: Check out source
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -94,7 +94,7 @@ jobs:
       actions: read
     steps:
       - name: Check out deployment adapter
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Download artifact
         uses: actions/download-artifact@v5
