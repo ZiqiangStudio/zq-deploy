@@ -95,7 +95,7 @@ jobs:
 
           while IFS= read -r item; do
             name=$(jq -er '.name' <<<"${item}")
-            build=$(jq -er 'if has("build") then .build else true end' <<<"${item}")
+            build=$(jq -r 'if has("build") then .build else true end' <<<"${item}")
             if [[ "${build}" == 'false' ]]; then
               ref=$(jq -er '.ref | select(test("@sha256:"))' <<<"${item}")
               refs=$(jq -c --arg name "${name}" --arg ref "${ref}" '. + {($name): $ref}' <<<"${refs}")
