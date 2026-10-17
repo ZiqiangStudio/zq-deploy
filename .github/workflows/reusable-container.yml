@@ -72,7 +72,7 @@ jobs:
 
       - name: Log in to GitHub Container Registry
         if: ${{ github.event_name != 'pull_request' && inputs.registry == 'ghcr.io' }}
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -80,7 +80,7 @@ jobs:
 
       - name: Log in to external container registry
         if: ${{ github.event_name != 'pull_request' && inputs.registry != 'ghcr.io' }}
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ inputs.registry }}
           username: ${{ secrets.registry_username }}
