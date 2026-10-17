@@ -151,6 +151,10 @@ async function handle(request, response) {
     response.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' }).end('ok');
     return;
   }
+  if (request.method === 'GET' && request.url === '/github/webhook') {
+    response.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' }).end('ok');
+    return;
+  }
   if (request.method !== 'POST' || request.url !== '/github/webhook') {
     response.writeHead(404).end();
     return;
