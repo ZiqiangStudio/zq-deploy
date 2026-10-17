@@ -15,5 +15,5 @@ jobs:
     with:
       operation: ${{ inputs.operation }}
       service-id: example-service
-      environment: staging
+      environment: production
     secrets: inherit

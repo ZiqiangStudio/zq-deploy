@@ -8,13 +8,13 @@ on:
         type: string
         required: true
       service-id:
-        description: Service identifier from services/inventory.yml.
+        description: Service identifier from the business repository.
         type: string
         required: true
       environment:
         description: GitHub Environment protecting the operation.
         type: string
-        default: staging
+        required: true
       adapter-script:
         description: Repository-local backup adapter.
         type: string
@@ -37,7 +37,7 @@ jobs:
       cancel-in-progress: false
     steps:
       - name: Check out source
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
 
       - name: Validate adapter
         shell: bash
