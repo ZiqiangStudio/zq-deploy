@@ -7,6 +7,14 @@ on:
         required: false
       registry_password:
         required: false
+      DEPLOY_HOST:
+        required: false
+      DEPLOY_USER:
+        required: false
+      DEPLOY_SSH_PRIVATE_KEY:
+        required: false
+      DEPLOY_KNOWN_HOSTS:
+        required: false
     inputs:
       context:
         description: Docker build context.
@@ -118,26 +126,16 @@ jobs:
       - name: Check out deployment adapter
         uses: actions/checkout@v7
 
-      - name: Log in to GitHub Container Registry on deploy runner
-        if: ${{ inputs.registry == 'ghcr.io' }}
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Log in to external container registry on deploy runner
-        if: ${{ inputs.registry != 'ghcr.io' }}
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ inputs.registry }}
-          username: ${{ secrets.registry_username }}
-          password: ${{ secrets.registry_password }}
-
       - name: Run deployment adapter
         env:
           DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
           IMAGE_REF: ${{ inputs.image }}@${{ needs.image.outputs.digest }}
           GITHUB_SHA: ${{ github.sha }}
           SERVICE_IMAGE: ${{ inputs.image }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          REGISTRY_USERNAME: ${{ github.actor }}
+          REGISTRY_TOKEN: ${{ github.token }}
         run: bash "${{ inputs.deploy-script }}"
