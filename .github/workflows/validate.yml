@@ -9,6 +9,9 @@ permissions:
   contents: read
 
 jobs:
+  pr-title:
+    uses: ./.github/workflows/reusable-pr-title.yml
+
   validate:
     runs-on: ubuntu-24.04
     steps:
