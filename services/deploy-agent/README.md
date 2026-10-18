@@ -14,3 +14,5 @@
 适配器必须完成 Compose 更新、健康检查和失败回滚；返回非零状态后，控制面会把 GitHub Deployment 标记为失败。
 
 代理需要访问 Docker socket，因此应使用专用系统用户、最小化部署目录权限，并只在受信任服务器上运行。
+
+控制面会随任务返回短期 GitHub App installation token。代理只用它登录 `ghcr.io`，不会把令牌写入磁盘或传给部署脚本；任务结束后立即退出注册表会话。GitHub App 需要 `Packages: read` 权限。
