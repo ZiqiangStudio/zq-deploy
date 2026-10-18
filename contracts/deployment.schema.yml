@@ -1,0 +1,18 @@
+schema: zq-platform/deployment/v1
+payload:
+  environment: GitHub Environment name; the control plane resolves it to an active agent.
+  service: GitHub repository service name.
+  repository: Full GitHub repository name.
+  sha: Source commit associated with the image.
+  image_refs: Object of logical image names to immutable registry references ending in @sha256:digest.
+resolution:
+  environment: maps to one active agent in the control plane's DEPLOY_TARGETS_JSON.
+  agent: runs the repository's server-side deployment manifest for the service.
+status:
+  accepted: control plane creates in_progress deployment status.
+  success: agent completed the deployment adapter and health check.
+  failure: agent adapter failed; the adapter must perform rollback before returning non-zero.
+security:
+  - Project workflows never send hostnames, SSH keys, or server credentials.
+  - Agent tokens and deployment manifests stay on the server or control-plane host.
+  - The control plane accepts only immutable image references.

@@ -1,0 +1,25 @@
+services:
+  deployment-control:
+    image: ${DEPLOYER_IMAGE:?DEPLOYER_IMAGE is required}
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - deployment-state:/data
+    networks:
+      - traefik
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: traefik
+      traefik.http.routers.deployment-control.rule: Host(`deploy.ziqiang.net.cn`)
+      traefik.http.routers.deployment-control.entrypoints: websecure
+      traefik.http.routers.deployment-control.tls: "true"
+      traefik.http.routers.deployment-control.tls.certresolver: ziqiang-ali
+      traefik.http.services.deployment-control.loadbalancer.server.port: "8080"
+
+volumes:
+  deployment-state:
+
+networks:
+  traefik:
+    external: true

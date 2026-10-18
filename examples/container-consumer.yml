@@ -5,6 +5,11 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+  packages: write
+  deployments: write
+
 jobs:
   deploy:
     uses: ZiqiangStudio/zq-platform/.github/workflows/reusable-container.yml@main
@@ -13,8 +18,5 @@ jobs:
         [{"name":"default","image":"example-service"}]
       deploy: true
       environment: production
-      deploy-runner: ubuntu-24.04
+      validate-script: .platform/validate.sh
     secrets: inherit
-    permissions:
-      contents: read
-      packages: write

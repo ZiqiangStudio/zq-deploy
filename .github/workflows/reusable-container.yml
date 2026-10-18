@@ -1,4 +1,4 @@
-name: Reusable container deployment
+name: Reusable container build and deployment
 
 on:
   workflow_call:
@@ -6,14 +6,6 @@ on:
       registry_username:
         required: false
       registry_password:
-        required: false
-      DEPLOY_HOST:
-        required: false
-      DEPLOY_USER:
-        required: false
-      DEPLOY_SSH_PRIVATE_KEY:
-        required: false
-      DEPLOY_KNOWN_HOSTS:
         required: false
     inputs:
       images:
@@ -33,25 +25,17 @@ on:
         type: string
         default: registry-vpc.cn-hangzhou.aliyuncs.com
       deploy:
-        description: Run the project's deployment adapter after publishing images.
+        description: Create a GitHub Deployment for the central control plane after publishing images.
         type: boolean
         default: false
-      deploy-script:
-        description: Project-local deployment adapter.
+      environment:
+        description: GitHub Environment and logical deployment target.
         type: string
-        default: .platform/deploy.sh
+        required: true
       validate-script:
         description: Project-local deployment contract validation script.
         type: string
         default: ""
-      environment:
-        description: GitHub Environment used for deployment protection and secrets.
-        type: string
-        required: true
-      deploy-runner:
-        description: Hosted runner or one custom self-hosted runner label.
-        type: string
-        default: ubuntu-24.04
     outputs:
       image-refs:
         description: JSON object mapping image names to immutable refs.
@@ -63,6 +47,7 @@ on:
 permissions:
   contents: read
   packages: write
+  deployments: write
 
 jobs:
   image:
@@ -173,33 +158,13 @@ jobs:
         run: bash "${{ inputs.validate-script }}"
 
   deploy:
-    name: Deploy containers
-    needs: image
     if: ${{ inputs.deploy && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-    runs-on: ${{ inputs.deploy-runner }}
-    timeout-minutes: 20
-    environment: ${{ inputs.environment }}
-    concurrency:
-      group: zq-platform-deploy-${{ github.repository }}-${{ inputs.environment }}
-      cancel-in-progress: false
+    needs: image
+    uses: ./.github/workflows/reusable-deploy.yml
+    with:
+      environment: ${{ inputs.environment }}
+      image-refs: ${{ needs.image.outputs.image-refs }}
+      image-digest: ${{ needs.image.outputs.image-digest }}
     permissions:
       contents: read
-      packages: read
-    steps:
-      - name: Check out deployment adapter
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
-
-      - name: Run deployment adapter
-        env:
-          DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
-          IMAGE_REFS: ${{ needs.image.outputs.image-refs }}
-          GITHUB_SHA: ${{ github.sha }}
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
-          DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
-          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
-          REGISTRY_HOST: ${{ inputs.registry }}
-          INTERNAL_REGISTRY_HOST: ${{ inputs.internal-registry }}
-          REGISTRY_USERNAME: ${{ inputs.registry == 'ghcr.io' && github.actor || secrets.registry_username }}
-          REGISTRY_TOKEN: ${{ inputs.registry == 'ghcr.io' && github.token || secrets.registry_password }}
-        run: bash "${{ inputs.deploy-script }}"
+      deployments: write
