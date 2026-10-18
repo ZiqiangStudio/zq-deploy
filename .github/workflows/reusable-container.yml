@@ -61,6 +61,7 @@ jobs:
     if: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
     name: Build and publish images
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     outputs:
       image-refs: ${{ steps.build.outputs.image-refs }}
       image-digest: ${{ steps.build.outputs.image-digest }}
@@ -157,6 +158,7 @@ jobs:
     needs: image
     if: ${{ inputs.deploy && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     runs-on: ${{ inputs.deploy-runner }}
+    timeout-minutes: 20
     environment: ${{ inputs.environment }}
     concurrency:
       group: zq-platform-deploy-${{ github.repository }}-${{ inputs.environment }}
