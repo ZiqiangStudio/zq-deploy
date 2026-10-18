@@ -34,7 +34,6 @@
 `services/deployment-control` 使用一个 GitHub App Webhook，同时处理 `deployment` 和 `deployment_status` 事件。GitHub App 需要：
 
 - Deployments：读写；
-- Packages：只读，用于代理拉取私有 GHCR 镜像；
 - Organization Projects：读写；
 - Metadata：只读；
 - Webhook Events：订阅 `deployment`、`deployment_status`。
@@ -61,7 +60,7 @@ PORT=8080
 
 ## 服务器代理
 
-`services/deploy-agent` 在每台服务器运行，主动轮询控制面，不接受公网入站连接。控制面为每个任务返回短期 GitHub App installation token，代理用它登录 GHCR 后再执行部署，令牌不写入磁盘。代理需要：
+`services/deploy-agent` 在每台服务器运行，主动轮询控制面，不接受公网入站连接。代理使用服务器本地配置的注册表凭据拉取不可变镜像，凭据不进入 GitHub Deployment 或业务仓库。代理需要：
 
 ```text
 DEPLOYER_URL=https://deploy.ziqiang.net.cn

@@ -334,7 +334,7 @@ async function pollJob(request, response) {
   job.leaseExpiresAt = new Date(now + config.leaseSeconds * 1000).toISOString();
   job.updatedAt = new Date(now).toISOString();
   await saveState();
-  json(response, 200, { ...job, registryToken: await githubToken() });
+  json(response, 200, job);
 }
 
 async function reportJob(request, response, id) {
