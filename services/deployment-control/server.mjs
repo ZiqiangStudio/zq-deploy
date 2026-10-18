@@ -306,6 +306,14 @@ async function enqueueDeployment(event) {
   await setDeploymentStatus(job, 'in_progress', '部署中');
   state.jobs.push(job);
   await saveState();
+  await updateProject({
+    service: job.service,
+    environment: job.environment,
+    server: job.target,
+    stateName: '部署中',
+    imageDigestValue: imageDigest(job.imageRefs),
+    deployedAt: job.createdAt,
+  });
 }
 
 async function pollJob(request, response) {
@@ -326,7 +334,7 @@ async function pollJob(request, response) {
   job.leaseExpiresAt = new Date(now + config.leaseSeconds * 1000).toISOString();
   job.updatedAt = new Date(now).toISOString();
   await saveState();
-  json(response, 200, job);
+  json(response, 200, { ...job, registryToken: await githubToken() });
 }
 
 async function reportJob(request, response, id) {
@@ -342,6 +350,14 @@ async function reportJob(request, response, id) {
   delete job.leaseExpiresAt;
   await saveState();
   await setDeploymentStatus(job, body.status, body.status === 'success' ? '成功' : '失败', errorMessage);
+  await updateProject({
+    service: job.service,
+    environment: job.environment,
+    server: job.target,
+    stateName: body.status === 'success' ? '成功' : '失败',
+    imageDigestValue: imageDigest(job.imageRefs),
+    deployedAt: job.updatedAt,
+  });
   json(response, 200, { status: job.status });
 }
 
@@ -359,7 +375,7 @@ async function handleWebhook(request, response) {
     const stateName = payload.platform_state || ({ success: '成功', failure: '失败', error: '失败', in_progress: '部署中' }[status.state]);
     const deployedAt = payload.deployed_at || status.created_at;
     const service = event.repository?.name;
-    if (!service || !stateName || !payload.server || !deployedAt) throw new Error('Deployment status is missing service, state, server, or deployed_at');
+    if (!service || !stateName || !deployedAt || !payload.server) return response.writeHead(204).end();
     await updateProject({
       service,
       environment: deployment.environment,
