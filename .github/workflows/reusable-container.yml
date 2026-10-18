@@ -16,16 +16,8 @@ on:
       DEPLOY_KNOWN_HOSTS:
         required: false
     inputs:
-      context:
-        description: Docker build context.
-        type: string
-        default: .
-      dockerfile:
-        description: Dockerfile path.
-        type: string
-        default: Dockerfile
-      image:
-        description: Fully qualified image name without a tag.
+      images:
+        description: JSON array of images to build or pin.
         type: string
         required: true
       registry:
@@ -33,7 +25,7 @@ on:
         type: string
         default: ghcr.io
       deploy:
-        description: Run the project's deployment adapter after publishing the image.
+        description: Run the project's deployment adapter after publishing images.
         type: boolean
         default: false
       deploy-script:
@@ -49,9 +41,12 @@ on:
         type: string
         default: ubuntu-24.04
     outputs:
+      image-refs:
+        description: JSON object mapping image names to immutable refs.
+        value: ${{ jobs.image.outputs.image-refs }}
       image-digest:
-        description: Digest of the published image.
-        value: ${{ jobs.image.outputs.digest }}
+        description: Digest of the first built image.
+        value: ${{ jobs.image.outputs.image-digest }}
 
 permissions:
   contents: read
@@ -59,10 +54,11 @@ permissions:
 
 jobs:
   image:
-    name: Build and publish image
+    name: Build and publish images
     runs-on: ubuntu-24.04
     outputs:
-      digest: ${{ steps.build.outputs.digest }}
+      image-refs: ${{ steps.build.outputs.image-refs }}
+      image-digest: ${{ steps.build.outputs.image-digest }}
     steps:
       - name: Check out source
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
@@ -86,33 +82,62 @@ jobs:
           username: ${{ secrets.registry_username }}
           password: ${{ secrets.registry_password }}
 
-      - name: Generate image metadata
-        id: metadata
-        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051
-        with:
-          images: ${{ inputs.image }}
-          tags: |
-            type=sha
-            type=ref,event=branch
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-
-      - name: Build and publish image
+      - name: Build and publish images
         id: build
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
-        with:
-          context: ${{ inputs.context }}
-          file: ${{ inputs.dockerfile }}
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.metadata.outputs.tags }}
-          labels: ${{ steps.metadata.outputs.labels }}
-          provenance: true
-          sbom: true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+        env:
+          IMAGE_DEFINITIONS: ${{ inputs.images }}
+          PUSH_IMAGES: ${{ github.event_name != 'pull_request' }}
+        run: |
+          set -Eeuo pipefail
+          command -v jq >/dev/null
+          refs='{}'
+          first_digest=''
+
+          while IFS= read -r item; do
+            name=$(jq -er '.name' <<<"${item}")
+            build=$(jq -r 'if has("build") then .build else true end' <<<"${item}")
+            if [[ "${build}" == 'false' ]]; then
+              ref=$(jq -er '.ref | select(test("@sha256:"))' <<<"${item}")
+              refs=$(jq -c --arg name "${name}" --arg ref "${ref}" '. + {($name): $ref}' <<<"${refs}")
+              continue
+            fi
+
+            image=$(jq -er '.image' <<<"${item}")
+            context=$(jq -r '.context // "."' <<<"${item}")
+            dockerfile=$(jq -r '.dockerfile // "Dockerfile"' <<<"${item}")
+            metadata=$(mktemp)
+            output_args=(--load)
+            attest_args=(--provenance=false --sbom=false)
+            if [[ "${PUSH_IMAGES}" == 'true' ]]; then
+              output_args=(--push)
+              attest_args=(--provenance=true --sbom=true)
+            fi
+
+            docker buildx build \
+              --file "${dockerfile}" \
+              --tag "${image}:${name}-${GITHUB_SHA}" \
+              --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+              --metadata-file "${metadata}" \
+              "${attest_args[@]}" \
+              "${output_args[@]}" \
+              --cache-from type=gha \
+              --cache-to type=gha,mode=max \
+              "${context}"
+
+            if [[ "${PUSH_IMAGES}" == 'true' ]]; then
+              digest=$(jq -er '.["containerimage.digest"]' "${metadata}")
+              ref="${image}@${digest}"
+              refs=$(jq -c --arg name "${name}" --arg ref "${ref}" '. + {($name): $ref}' <<<"${refs}")
+              [[ -n "${first_digest}" ]] || first_digest="${digest}"
+            fi
+            rm -f "${metadata}"
+          done < <(jq -cer 'if type == "array" and length > 0 then .[] else error("images must be a non-empty array") end' <<<"${IMAGE_DEFINITIONS}")
+
+          echo "image-refs=${refs}" >>"${GITHUB_OUTPUT}"
+          echo "image-digest=${first_digest}" >>"${GITHUB_OUTPUT}"
 
   deploy:
-    name: Deploy container
+    name: Deploy containers
     needs: image
     if: ${{ inputs.deploy && github.event_name != 'pull_request' }}
     runs-on: ${{ inputs.deploy-runner }}
@@ -131,9 +156,8 @@ jobs:
       - name: Run deployment adapter
         env:
           DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
-          IMAGE_REF: ${{ inputs.image }}@${{ needs.image.outputs.digest }}
+          IMAGE_REFS: ${{ needs.image.outputs.image-refs }}
           GITHUB_SHA: ${{ github.sha }}
-          SERVICE_IMAGE: ${{ inputs.image }}
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
