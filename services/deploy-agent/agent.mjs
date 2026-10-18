@@ -1,6 +1,8 @@
+import { promises as fs } from 'node:fs';
 import { spawn } from 'node:child_process';
+import path from 'node:path';
 
-const required = ['DEPLOYER_URL', 'DEPLOY_AGENT_ID', 'DEPLOY_AGENT_TOKEN', 'DEPLOY_MANIFEST_DIR', 'REGISTRY_HOST', 'REGISTRY_USERNAME', 'REGISTRY_TOKEN'];
+const required = ['DEPLOYER_URL', 'DEPLOY_AGENT_ID', 'DEPLOY_AGENT_TOKEN', 'DEPLOY_MANIFEST_DIR', 'AGENT_UPDATE_DIR', 'REGISTRY_HOST', 'REGISTRY_USERNAME', 'REGISTRY_TOKEN'];
 for (const name of required) {
   if (!process.env[name]) throw new Error(`Missing ${name}`);
 }
@@ -10,6 +12,7 @@ const config = {
   agentId: process.env.DEPLOY_AGENT_ID,
   token: process.env.DEPLOY_AGENT_TOKEN,
   manifestDir: process.env.DEPLOY_MANIFEST_DIR,
+  agentUpdateDir: process.env.AGENT_UPDATE_DIR,
   registryHost: process.env.REGISTRY_HOST,
   registryUsername: process.env.REGISTRY_USERNAME,
   registryToken: process.env.REGISTRY_TOKEN,
@@ -66,8 +69,32 @@ async function logoutRegistries(hosts) {
   for (const host of hosts) await command('docker', ['logout', host]);
 }
 
+function agentImage(job) {
+  const image = job.imageRefs?.['deploy-agent'];
+  if (!image || !/^[a-zA-Z0-9./:@_-]+$/.test(image)) throw new Error('job deploy-agent image is invalid');
+  return image;
+}
+
+async function prepareAgentUpgrade(job) {
+  const image = job.imageRefs?.['deploy-agent'];
+  if (!image) return false;
+  const pending = path.join(config.agentUpdateDir, 'pending-image');
+  await fs.writeFile(pending, `${agentImage(job)}\n`, { mode: 0o600 });
+  return true;
+}
+
+async function promoteAgentUpgrade(job) {
+  if (!job.imageRefs?.['deploy-agent']) return;
+  const pending = path.join(config.agentUpdateDir, 'pending-image');
+  const desired = path.join(config.agentUpdateDir, 'desired-image');
+  const pendingImage = (await fs.readFile(pending, 'utf8')).trim();
+  if (pendingImage !== agentImage(job)) throw new Error('pending deploy-agent image does not match deployment');
+  await fs.rename(pending, desired);
+}
+
 async function execute(job) {
   if (!/^[a-zA-Z0-9._-]+$/.test(job.service)) throw new Error('job service contains unsupported characters');
+  await prepareAgentUpgrade(job);
   const loggedIn = await loginRegistries(job);
   try {
     const script = `${config.manifestDir}/${job.service}/deploy.sh`;
@@ -104,12 +131,21 @@ async function run() {
     try {
       const job = await poll();
       if (job) {
+        let success = false;
         try {
           await execute(job);
           await report(job, 'success', null);
+          success = true;
         } catch (error) {
           console.error(error);
           await report(job, 'failure', error);
+        }
+        if (success) {
+          try {
+            await promoteAgentUpgrade(job);
+          } catch (error) {
+            console.error(`agent upgrade promotion failed: ${error.message || error}`);
+          }
         }
       }
     } catch (error) {

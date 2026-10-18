@@ -1,0 +1,9 @@
+[Unit]
+Description=Reconcile the zq-platform deploy agent image
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/zq-platform/deploy-agent/reconcile.env
+ExecStart=/usr/local/libexec/zq-platform-deploy-agent-reconcile

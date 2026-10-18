@@ -1,0 +1,9 @@
+[Unit]
+Description=Watch the desired zq-platform deploy agent image
+
+[Path]
+PathChanged=/etc/zq-platform/deploy-agent/desired-image
+Unit=zq-platform-deploy-agent-reconcile.service
+
+[Install]
+WantedBy=multi-user.target
