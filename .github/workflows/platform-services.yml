@@ -1,0 +1,26 @@
+name: Platform services
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  packages: write
+  deployments: write
+
+jobs:
+  services:
+    uses: ./.github/workflows/reusable-container.yml
+    with:
+      registry: ghcr.io
+      registry-namespace: ziqiangstudio
+      images: >-
+        [{"name":"deployment-control","image":"zq-platform-deployment-control","context":"services/deployment-control","dockerfile":"services/deployment-control/Dockerfile"},{"name":"deploy-agent","image":"zq-platform-deploy-agent","context":"services/deploy-agent","dockerfile":"services/deploy-agent/Dockerfile"}]
+      deploy: true
+      environment: production
+    permissions:
+      contents: read
+      packages: write
+      deployments: write
