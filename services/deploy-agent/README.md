@@ -18,3 +18,5 @@
 代理使用服务器 `.env` 中的注册表凭据登录中央注册表，不会把凭据传给部署脚本；任务结束后立即退出注册表会话。GHCR 私有镜像需要使用专用机器身份的 `read:packages` 凭据，不能依赖 GitHub App installation token。
 
 `REGISTRY_HOST` 和 `REGISTRY_USERNAME` 是服务器配置，不写入业务仓库；它们必须与镜像引用使用的中央注册表一致。
+
+平台镜像更新由代理在部署成功上报后写入 `AGENT_UPDATE_DIR`，主机上的 systemd reconcile service 再更新代理容器。代理不会在自己的部署任务中重启自己，因此状态上报不会因自更新丢失。

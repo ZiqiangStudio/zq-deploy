@@ -6,6 +6,7 @@ set -Eeuo pipefail
 : "${DEPLOY_AGENT_COMPOSE_FILE:?DEPLOY_AGENT_COMPOSE_FILE is required}"
 : "${DEPLOY_AGENT_SERVICE:?DEPLOY_AGENT_SERVICE is required}"
 
+[[ -s "${DEPLOY_AGENT_IMAGE_FILE}" ]] || exit 0
 desired=$(tr -d '\r\n' < "${DEPLOY_AGENT_IMAGE_FILE}")
 [[ "${desired}" =~ ^[a-zA-Z0-9./:@_-]+$ ]] || { echo 'invalid deploy-agent image' >&2; exit 1; }
 
