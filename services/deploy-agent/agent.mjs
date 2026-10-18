@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 
-const required = ['DEPLOYER_URL', 'DEPLOY_AGENT_ID', 'DEPLOY_AGENT_TOKEN', 'DEPLOY_MANIFEST_DIR', 'REGISTRY_HOST', 'REGISTRY_USERNAME'];
+const required = ['DEPLOYER_URL', 'DEPLOY_AGENT_ID', 'DEPLOY_AGENT_TOKEN', 'DEPLOY_MANIFEST_DIR', 'REGISTRY_HOST', 'REGISTRY_USERNAME', 'REGISTRY_TOKEN'];
 for (const name of required) {
   if (!process.env[name]) throw new Error(`Missing ${name}`);
 }
@@ -12,6 +12,7 @@ const config = {
   manifestDir: process.env.DEPLOY_MANIFEST_DIR,
   registryHost: process.env.REGISTRY_HOST,
   registryUsername: process.env.REGISTRY_USERNAME,
+  registryToken: process.env.REGISTRY_TOKEN,
   intervalMs: Number(process.env.DEPLOY_INTERVAL_MS || 5000),
 };
 if (!Number.isInteger(config.intervalMs) || config.intervalMs < 1000) throw new Error('DEPLOY_INTERVAL_MS must be at least 1000');
@@ -51,8 +52,7 @@ async function loginRegistries(job) {
   try {
     for (const host of registryHosts(job.imageRefs)) {
       if (host !== config.registryHost) throw new Error(`unsupported private registry: ${host}`);
-      if (!job.registryToken) throw new Error('deployment control did not provide a registry token');
-      await command('docker', ['login', host, '--username', config.registryUsername, '--password-stdin'], `${job.registryToken}\n`);
+      await command('docker', ['login', host, '--username', config.registryUsername, '--password-stdin'], `${config.registryToken}\n`);
       loggedIn.push(host);
     }
     return loggedIn;

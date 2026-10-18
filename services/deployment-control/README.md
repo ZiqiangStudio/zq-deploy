@@ -8,7 +8,7 @@
 
 状态保存在 `STATE_FILE` 指向的持久卷中。控制面本身不保存服务器 SSH 凭据；服务器凭据和项目部署适配器只存在于服务器代理侧。
 
-GitHub App 必须订阅 `deployment` 和 `deployment_status` 事件，并授予 Deployments 读写、Packages 只读、Organization Projects 读写、Metadata 只读权限。
+GitHub App 必须订阅 `deployment` 和 `deployment_status` 事件，并授予 Deployments 读写、Organization Projects 读写、Metadata 只读权限。
 
 `DEPLOY_TARGETS_JSON` 只保存环境到逻辑代理名的映射，例如：
 
