@@ -97,7 +97,6 @@ jobs:
       cancel-in-progress: false
     permissions:
       contents: read
-      id-token: write
       actions: read
     steps:
       - name: Check out deployment adapter

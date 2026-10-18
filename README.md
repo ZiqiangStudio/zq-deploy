@@ -55,16 +55,18 @@ Webhook 地址为 `/github/webhook`。服务验证 GitHub 签名后，只处理 
 
 ## 统一接入方式
 
+新项目只需要准备一个薄的 workflow 和一个部署适配器。镜像仓库地址和命名空间由本仓库的可复用 workflow 统一管理，业务仓库只写镜像逻辑名；切换镜像仓库时只修改本仓库的默认输入。
+
 业务仓库保留一个很薄的调用文件：
 
 ```yaml
 jobs:
   deploy:
-    uses: ZiqiangStudio/zq-platform/.github/workflows/reusable-container.yml@<pinned-ref>
+    uses: ZiqiangStudio/zq-platform/.github/workflows/reusable-container.yml@main
     with:
       images: >-
-        [{"name":"default","image":"ghcr.io/ziqiangstudio/example-service"}]
-      deploy: ${{ github.event_name == 'push' }}
+        [{"name":"default","image":"example-service"}]
+      deploy: true
       environment: production
       deploy-script: .platform/deploy.sh
     secrets: inherit
@@ -72,13 +74,25 @@ jobs:
   deployment-event:
     if: github.event_name != 'pull_request' && needs.deploy.result == 'success'
     needs: deploy
-    uses: ZiqiangStudio/zq-platform/.github/workflows/reusable-project-sync.yml@<pinned-ref>
+    uses: ZiqiangStudio/zq-platform/.github/workflows/reusable-project-sync.yml@main
     with:
       environment: production
       server: zq1
       state: 成功
       image-digest: ${{ needs.deploy.outputs.image-digest }}
-      deployed-at: ${{ github.run_started_at }}
+```
+
+接入新项目时按四步完成：
+
+1. 创建 `production` Environment，并配置 `DOCKER_USERNAME`、`DOCKER_PASSWORD`、`DEPLOY_HOST`、`DEPLOY_USER`、`DEPLOY_SSH_PRIVATE_KEY`、`DEPLOY_KNOWN_HOSTS`。
+2. 复制 `examples/container-consumer.yml` 到项目的 `.github/workflows/cicd.yml`，替换镜像名、服务器和部署脚本路径。
+3. 编写 `.platform/deploy.sh`：读取 `IMAGE_REFS`，在目标服务器执行 Compose 更新、健康检查和失败回滚。
+4. 提交 PR；PR 只验证，合并 `main` 后自动部署并同步 Project。
+
+固定依赖镜像使用逻辑名、摘要和仓库类型，不写仓库地址：
+
+```json
+{"name":"redis","build":false,"image":"redis","digest":"sha256:...","registry":"main"}
 ```
 
 业务仓库必须提供：
@@ -99,7 +113,7 @@ IMAGE_REFS           JSON 对象，值为已发布且带 digest 的容器镜像
 GITHUB_SHA          本次构建对应的提交
 ```
 
-生产部署只允许受保护的 Environment 触发，并使用固定的工作流版本或完整 commit SHA。部署脚本必须幂等，不能执行删除 Volume、删除数据库或无条件清理镜像。
+生产部署只允许受保护的 Environment 触发。当前组织使用 `@main` 自动获取统一模板更新；如果后续启用强制 SHA 固定，再把两个 `uses` 引用替换为平台提交 SHA。部署脚本必须幂等，不能执行删除 Volume、删除数据库或无条件清理镜像。
 
 ## 当前边界
 

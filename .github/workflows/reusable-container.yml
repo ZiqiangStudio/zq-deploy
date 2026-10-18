@@ -21,9 +21,17 @@ on:
         type: string
         required: true
       registry:
-        description: Container registry hostname.
+        description: Central container registry hostname.
         type: string
-        default: ghcr.io
+        default: registry.cn-hangzhou.aliyuncs.com
+      registry-namespace:
+        description: Central container registry namespace.
+        type: string
+        default: ziqiang_studio
+      internal-registry:
+        description: Central internal registry hostname for dependency images.
+        type: string
+        default: registry-vpc.cn-hangzhou.aliyuncs.com
       deploy:
         description: Run the project's deployment adapter after publishing images.
         type: boolean
@@ -94,6 +102,8 @@ jobs:
           IMAGE_DEFINITIONS: ${{ inputs.images }}
           PUSH_IMAGES: ${{ github.event_name != 'pull_request' }}
           REGISTRY_HOST: ${{ inputs.registry }}
+          REGISTRY_NAMESPACE: ${{ inputs.registry-namespace }}
+          INTERNAL_REGISTRY_HOST: ${{ inputs.internal-registry }}
         run: |
           set -Eeuo pipefail
           command -v jq >/dev/null
@@ -104,12 +114,21 @@ jobs:
             name=$(jq -er '.name' <<<"${item}")
             build=$(jq -r 'if has("build") then .build else true end' <<<"${item}")
             if [[ "${build}" == 'false' ]]; then
-              ref=$(jq -er '.ref | select(test("@sha256:"))' <<<"${item}")
+              image=$(jq -er '.image' <<<"${item}")
+              digest=$(jq -er '.digest | select(test("^sha256:"))' <<<"${item}")
+              registry_kind=$(jq -r '.registry // "main"' <<<"${item}")
+              case "${registry_kind}" in
+                main) dependency_registry="${REGISTRY_HOST}" ;;
+                internal) dependency_registry="${INTERNAL_REGISTRY_HOST}" ;;
+                *) echo "unsupported dependency registry: ${registry_kind}" >&2; exit 1 ;;
+              esac
+              ref="${dependency_registry}/${REGISTRY_NAMESPACE}/${image}@${digest}"
               refs=$(jq -c --arg name "${name}" --arg ref "${ref}" '. + {($name): $ref}' <<<"${refs}")
               continue
             fi
 
             image=$(jq -er '.image' <<<"${item}")
+            image="${REGISTRY_HOST}/${REGISTRY_NAMESPACE}/${image}"
             context=$(jq -r '.context // "."' <<<"${item}")
             dockerfile=$(jq -r '.dockerfile // "Dockerfile"' <<<"${item}")
             metadata=$(mktemp)
@@ -165,7 +184,6 @@ jobs:
       cancel-in-progress: false
     permissions:
       contents: read
-      id-token: write
       packages: read
     steps:
       - name: Check out deployment adapter
@@ -181,6 +199,7 @@ jobs:
           DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
           REGISTRY_HOST: ${{ inputs.registry }}
+          INTERNAL_REGISTRY_HOST: ${{ inputs.internal-registry }}
           REGISTRY_USERNAME: ${{ inputs.registry == 'ghcr.io' && github.actor || secrets.registry_username }}
           REGISTRY_TOKEN: ${{ inputs.registry == 'ghcr.io' && github.token || secrets.registry_password }}
         run: bash "${{ inputs.deploy-script }}"
