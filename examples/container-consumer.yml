@@ -10,8 +10,7 @@ jobs:
     uses: ZiqiangStudio/zq-platform/.github/workflows/reusable-container.yml@main
     with:
       images: >-
-        [{"name":"default","image":"${{ vars.CONTAINER_REGISTRY }}/${{ vars.CONTAINER_IMAGE_NAMESPACE }}/example-service"}]
-      registry: ${{ vars.CONTAINER_REGISTRY }}
+        [{"name":"default","image":"example-service"}]
       deploy: true
       environment: production
       deploy-runner: ubuntu-24.04

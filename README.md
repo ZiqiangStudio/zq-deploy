@@ -55,15 +55,7 @@ Webhook 地址为 `/github/webhook`。服务验证 GitHub 签名后，只处理 
 
 ## 统一接入方式
 
-新项目只需要准备一个薄的 workflow 和一个部署适配器。镜像仓库由组织变量统一管理，项目不写死云厂商地址：
-
-```text
-CONTAINER_REGISTRY=当前镜像仓库域名
-CONTAINER_IMAGE_NAMESPACE=组织镜像命名空间
-CONTAINER_INTERNAL_REGISTRY=服务器内网可访问的镜像仓库域名（仅依赖内网镜像时使用）
-```
-
-组织切换镜像仓库时只修改这两个变量；项目 workflow 和部署适配器不变。
+新项目只需要准备一个薄的 workflow 和一个部署适配器。镜像仓库地址和命名空间由本仓库的可复用 workflow 统一管理，业务仓库只写镜像逻辑名；切换镜像仓库时只修改本仓库的默认输入。
 
 业务仓库保留一个很薄的调用文件：
 
@@ -73,8 +65,7 @@ jobs:
     uses: ZiqiangStudio/zq-platform/.github/workflows/reusable-container.yml@main
     with:
       images: >-
-        [{"name":"default","image":"${{ vars.CONTAINER_REGISTRY }}/${{ vars.CONTAINER_IMAGE_NAMESPACE }}/example-service"}]
-      registry: ${{ vars.CONTAINER_REGISTRY }}
+        [{"name":"default","image":"example-service"}]
       deploy: true
       environment: production
       deploy-script: .platform/deploy.sh
@@ -97,6 +88,12 @@ jobs:
 2. 复制 `examples/container-consumer.yml` 到项目的 `.github/workflows/cicd.yml`，替换镜像名、服务器和部署脚本路径。
 3. 编写 `.platform/deploy.sh`：读取 `IMAGE_REFS`，在目标服务器执行 Compose 更新、健康检查和失败回滚。
 4. 提交 PR；PR 只验证，合并 `main` 后自动部署并同步 Project。
+
+固定依赖镜像使用逻辑名、摘要和仓库类型，不写仓库地址：
+
+```json
+{"name":"redis","build":false,"image":"redis","digest":"sha256:...","registry":"main"}
+```
 
 业务仓库必须提供：
 
