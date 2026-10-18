@@ -278,7 +278,7 @@ function json(response, status, value) {
 async function enqueueDeployment(event) {
   const deployment = event.deployment;
   const payload = parseJson(deployment.payload, 'deployment.payload');
-  if (payload.schema !== 'zq-platform/deployment/v1') throw new Error('unsupported deployment schema');
+  if (payload.schema !== 'zq-platform/deployment/v1') return;
   const environment = deployment.environment;
   const target = config.targets[environment];
   if (!target) throw new Error(`No deployment target for environment ${environment}`);
