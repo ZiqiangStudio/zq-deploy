@@ -32,6 +32,10 @@ on:
         description: Project-local deployment adapter.
         type: string
         default: .platform/deploy.sh
+      validate-script:
+        description: Project-local deployment contract validation script.
+        type: string
+        default: ""
       environment:
         description: GitHub Environment used for deployment protection and secrets.
         type: string
@@ -54,7 +58,7 @@ permissions:
 
 jobs:
   image:
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    if: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
     name: Build and publish images
     runs-on: ubuntu-24.04
     outputs:
@@ -131,14 +135,22 @@ jobs:
             if [[ "${PUSH_IMAGES}" == 'true' ]]; then
               digest=$(jq -er '.["containerimage.digest"]' "${metadata}")
               ref="${image}@${digest}"
-              refs=$(jq -c --arg name "${name}" --arg ref "${ref}" '. + {($name): $ref}' <<<"${refs}")
               [[ -n "${first_digest}" ]] || first_digest="${digest}"
+            else
+              ref="${image}:${name}-${GITHUB_SHA}"
             fi
+            refs=$(jq -c --arg name "${name}" --arg ref "${ref}" '. + {($name): $ref}' <<<"${refs}")
             rm -f "${metadata}"
           done < <(jq -cer 'if type == "array" and length > 0 then .[] else error("images must be a non-empty array") end' <<<"${IMAGE_DEFINITIONS}")
 
           echo "image-refs=${refs}" >>"${GITHUB_OUTPUT}"
           echo "image-digest=${first_digest}" >>"${GITHUB_OUTPUT}"
+
+      - name: Validate deployment contract
+        if: ${{ github.event_name == 'pull_request' && inputs.validate-script != '' }}
+        env:
+          IMAGE_REFS: ${{ steps.build.outputs.image-refs }}
+        run: bash "${{ inputs.validate-script }}"
 
   deploy:
     name: Deploy containers
