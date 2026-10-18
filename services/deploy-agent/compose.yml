@@ -1,0 +1,9 @@
+services:
+  deploy-agent:
+    image: ${DEPLOY_AGENT_IMAGE:?DEPLOY_AGENT_IMAGE is required}
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /etc/zq-platform/deployments:/deployments:ro

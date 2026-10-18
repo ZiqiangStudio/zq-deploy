@@ -1,0 +1,70 @@
+name: Request central deployment
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: GitHub Environment and logical deployment target.
+        type: string
+        required: true
+      image-refs:
+        description: JSON object of logical image names to immutable digest references.
+        type: string
+        required: true
+      image-digest:
+        description: Primary image digest used by Project synchronization.
+        type: string
+        required: false
+
+permissions:
+  contents: read
+  deployments: write
+
+jobs:
+  request:
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    name: Request deployment
+    runs-on: ubuntu-24.04
+    environment: ${{ inputs.environment }}
+    concurrency:
+      group: zq-platform-deploy-${{ github.repository }}-${{ inputs.environment }}
+      cancel-in-progress: false
+    steps:
+      - name: Create GitHub Deployment
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+        env:
+          DEPLOYMENT_ENVIRONMENT: ${{ inputs.environment }}
+          IMAGE_REFS: ${{ inputs.image-refs }}
+          IMAGE_DIGEST: ${{ inputs.image-digest }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const imageRefs = JSON.parse(process.env.IMAGE_REFS);
+            const validDigest = value => typeof value === 'string' && /@sha256:[0-9a-f]{64}$/.test(value);
+            if (!imageRefs || typeof imageRefs !== 'object' || Array.isArray(imageRefs) || Object.keys(imageRefs).length === 0) {
+              throw new Error('image-refs must be a non-empty object');
+            }
+            for (const [name, ref] of Object.entries(imageRefs)) {
+              if (!/^[a-zA-Z0-9._-]+$/.test(name) || !validDigest(ref)) {
+                throw new Error(`image-refs.${name} must be an immutable image reference`);
+              }
+            }
+            const payload = {
+              schema: 'zq-platform/deployment/v1',
+              service: context.repo.repo,
+              repository: context.repo.owner + '/' + context.repo.repo,
+              sha: context.sha,
+              image_refs: imageRefs,
+              image_digest: process.env.IMAGE_DIGEST || null,
+            };
+            const { data: deployment } = await github.rest.repos.createDeployment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.sha,
+              environment: process.env.DEPLOYMENT_ENVIRONMENT,
+              description: `请求部署：${process.env.DEPLOYMENT_ENVIRONMENT}`,
+              payload: JSON.stringify(payload),
+              auto_merge: false,
+              required_contexts: [],
+            });
+            core.info(`Created deployment ${deployment.id}; the central control plane will dispatch it to the active agent.`);
