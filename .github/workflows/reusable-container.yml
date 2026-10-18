@@ -24,6 +24,10 @@ on:
         description: Container registry hostname.
         type: string
         default: ghcr.io
+      internal-registry:
+        description: Optional second registry hostname used by dependency images.
+        type: string
+        default: ""
       deploy:
         description: Run the project's deployment adapter after publishing images.
         type: boolean
@@ -165,7 +169,6 @@ jobs:
       cancel-in-progress: false
     permissions:
       contents: read
-      id-token: write
       packages: read
     steps:
       - name: Check out deployment adapter
@@ -181,6 +184,7 @@ jobs:
           DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
           REGISTRY_HOST: ${{ inputs.registry }}
+          INTERNAL_REGISTRY_HOST: ${{ inputs.internal-registry }}
           REGISTRY_USERNAME: ${{ inputs.registry == 'ghcr.io' && github.actor || secrets.registry_username }}
           REGISTRY_TOKEN: ${{ inputs.registry == 'ghcr.io' && github.token || secrets.registry_password }}
         run: bash "${{ inputs.deploy-script }}"

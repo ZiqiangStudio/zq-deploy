@@ -7,7 +7,7 @@ on:
 
 jobs:
   deploy:
-    uses: ZiqiangStudio/zq-platform/.github/workflows/reusable-static.yml@<pinned-ref>
+    uses: ZiqiangStudio/zq-platform/.github/workflows/reusable-static.yml@main
     with:
       build-command: npm run build
       artifact-path: dist
@@ -17,5 +17,4 @@ jobs:
     secrets: inherit
     permissions:
       contents: read
-      id-token: write
       actions: read
