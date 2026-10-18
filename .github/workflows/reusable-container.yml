@@ -87,6 +87,7 @@ jobs:
         env:
           IMAGE_DEFINITIONS: ${{ inputs.images }}
           PUSH_IMAGES: ${{ github.event_name != 'pull_request' }}
+          REGISTRY_HOST: ${{ inputs.registry }}
         run: |
           set -Eeuo pipefail
           command -v jq >/dev/null
@@ -108,9 +109,11 @@ jobs:
             metadata=$(mktemp)
             output_args=(--load)
             attest_args=(--provenance=false --sbom=false)
-            if [[ "${PUSH_IMAGES}" == 'true' ]]; then
+            if [[ "${PUSH_IMAGES}" == 'true' && "${REGISTRY_HOST}" == 'ghcr.io' ]]; then
               output_args=(--push)
               attest_args=(--provenance=true --sbom=true)
+            elif [[ "${PUSH_IMAGES}" == 'true' ]]; then
+              output_args=(--push)
             fi
 
             docker buildx build \
