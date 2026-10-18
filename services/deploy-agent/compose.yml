@@ -7,3 +7,4 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /etc/zq-platform/deployments:/deployments:ro
+      - /etc/zq-platform/deploy-agent:/agent-control
