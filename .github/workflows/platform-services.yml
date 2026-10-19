@@ -26,6 +26,7 @@ permissions:
 jobs:
   services:
     uses: ./.github/workflows/reusable-container.yml
+    secrets: inherit
     with:
       registry: ${{ vars.REGISTRY_HOST || 'ghcr.io' }}
       registry-namespace: ${{ vars.REGISTRY_NAMESPACE || 'ziqiangstudio' }}
@@ -44,3 +45,4 @@ jobs:
       packages: write
       deployments: write
       id-token: write
+
