@@ -9,6 +9,7 @@ permissions:
   contents: read
   packages: write
   deployments: write
+  id-token: write
 
 jobs:
   deploy:
