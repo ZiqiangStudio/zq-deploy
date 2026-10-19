@@ -11,6 +11,8 @@
 - `contracts/deployment.schema.yml`：部署载荷和状态契约。
 - `templates/compose/compose.yml`：Compose 运行基线。
 - `backup/`：备份和恢复契约。
+- `adapters/registry/`：注册表提供商适配器；云厂商 API 只允许出现在这里。
+- `docs/registry-providers.md`：注册表认证和换云契约。
 - `examples/`：业务仓库最小调用示例。
 
 ## 部署链路
@@ -60,7 +62,7 @@ PORT=8080
 
 ## 服务器代理
 
-`services/deploy-agent` 在每台服务器运行，主动轮询控制面，不接受公网入站连接。代理使用服务器本地配置的注册表凭据拉取不可变镜像，凭据不进入 GitHub Deployment 或业务仓库。代理需要：
+`services/deploy-agent` 在每台服务器运行，主动轮询控制面，不接受公网入站连接。代理使用服务器本地配置的注册表凭据拉取不可变镜像，凭据不进入 GitHub Deployment 或业务仓库。注册表提供商由 workflow 配置选择，云厂商 API 只存在于 `adapters/registry/`；部署控制面不依赖具体云。代理需要：
 
 ```text
 DEPLOYER_URL=https://deploy.ziqiang.net.cn

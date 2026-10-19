@@ -9,13 +9,20 @@ permissions:
   contents: read
   packages: write
   deployments: write
+  id-token: write
 
 jobs:
   services:
     uses: ./.github/workflows/reusable-container.yml
     with:
-      registry: ghcr.io
-      registry-namespace: ziqiangstudio
+      registry: ${{ vars.REGISTRY_HOST || 'ghcr.io' }}
+      registry-namespace: ${{ vars.REGISTRY_NAMESPACE || 'ziqiangstudio' }}
+      registry-provider: ${{ vars.REGISTRY_PROVIDER || 'github' }}
+      registry-region: ${{ vars.REGISTRY_REGION || '' }}
+      registry-instance-id: ${{ vars.REGISTRY_INSTANCE_ID || '' }}
+      registry-oidc-provider-arn: ${{ vars.REGISTRY_OIDC_PROVIDER_ARN || '' }}
+      registry-role-arn: ${{ vars.REGISTRY_ROLE_ARN || '' }}
+      registry-audience: ${{ vars.REGISTRY_AUDIENCE || '' }}
       images: >-
         [{"name":"deployment-control","image":"zq-platform-deployment-control","context":"services/deployment-control","dockerfile":"services/deployment-control/Dockerfile"},{"name":"deploy-agent","image":"zq-platform-deploy-agent","context":"services/deploy-agent","dockerfile":"services/deploy-agent/Dockerfile"}]
       deploy: true
@@ -24,3 +31,4 @@ jobs:
       contents: read
       packages: write
       deployments: write
+      id-token: write
