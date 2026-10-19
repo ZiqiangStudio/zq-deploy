@@ -118,7 +118,7 @@ async function executeStandardDeployment(job) {
     '--network', 'traefik',
   ];
 
-  const secretEnv = `/etc/zq-platform/secrets/${service}.env`;
+  const secretEnv = `/etc/zq-deploy/secrets/${service}.env`;
   try {
     await fs.access(secretEnv);
     args.push('--env-file', secretEnv);

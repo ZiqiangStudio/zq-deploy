@@ -1,5 +1,6 @@
 services:
   deploy-agent:
+    container_name: zq_deploy-agent
     image: ${DEPLOY_AGENT_IMAGE:?DEPLOY_AGENT_IMAGE is required}
     restart: unless-stopped
     env_file:
@@ -9,13 +10,13 @@ services:
       - registry-token
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - /etc/zq-platform/deployments:/deployments:ro
-      - /etc/zq-platform/deploy-agent:/agent-control
-      - /etc/zq-platform/secrets:/etc/zq-platform/secrets:ro
+      - /etc/zq-deploy/deployments:/deployments:ro
+      - /etc/zq-deploy/deploy-agent:/agent-control
+      - /etc/zq-deploy/secrets:/etc/zq-deploy/secrets:ro
       - ${CONTROL_PLANE_HOST_DIR:?CONTROL_PLANE_HOST_DIR is required}:/control-plane
 
 secrets:
   registry-username:
-    file: /etc/zq-platform/secrets/registry-username
+    file: /etc/zq-deploy/secrets/registry-username
   registry-token:
-    file: /etc/zq-platform/secrets/registry-token
+    file: /etc/zq-deploy/secrets/registry-token

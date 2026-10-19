@@ -1,5 +1,6 @@
 services:
   deployment-control:
+    container_name: zq_deploy-control
     image: ${DEPLOYER_IMAGE:?DEPLOYER_IMAGE is required}
     restart: unless-stopped
     env_file:

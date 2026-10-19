@@ -115,13 +115,42 @@ jobs:
       - name: Validate naming conventions
         env:
           REPO_NAME: ${{ github.event.repository.name }}
+          IMAGES_INPUT: ${{ inputs.images }}
         run: |
           set -Eeuo pipefail
-          if ! [[ "${REPO_NAME}" =~ ^[a-z0-9][a-z0-9._-]*[a-z0-9]$ ]]; then
-            echo "::error::仓库名称 '${REPO_NAME}' 不符合规范。命名仅允许小写字母、数字、中划线与下划线。"
+          repo="${REPO_NAME}"
+          echo "Validating repository and service naming: ${repo}"
+          if ! [[ "${repo}" =~ ^[a-z0-9][a-z0-9._-]*[a-z0-9]$ ]]; then
+            echo "::error::仓库名称 '${repo}' 不符合规范。命名仅允许小写字母、数字、中划线与下划线。"
             exit 1
           fi
-          echo "✅ 服务命名规范校验通过"
+
+          repo_clean="${repo//_/-}"
+
+          if [[ -n "${IMAGES_INPUT}" ]]; then
+            command -v jq >/dev/null
+            while IFS= read -r img_name; do
+              [[ -n "${img_name}" ]] || continue
+              img_clean="${img_name//_/-}"
+              if ! [[ "${img_clean}" =~ ^${repo_clean}(-[a-z0-9-]+)?$ ]] && ! [[ "${img_clean}" =~ ^(caddy|redis|meilisearch|office)$ ]]; then
+                echo "::error::镜像或服务名称 '${img_name}' 不符合规范。必须以仓库名称 '${repo}' 为前缀（例如 '${repo}-api' 或 '${repo}'）。"
+                exit 1
+              fi
+            done < <(jq -r 'if type == "array" then .[].image else empty end' <<<"${IMAGES_INPUT}")
+          fi
+
+          while IFS= read -r compose_file; do
+            [[ -f "${compose_file}" ]] || continue
+            proj_name=$(grep -E '^[[:space:]]*name:[[:space:]]*' "${compose_file}" | head -n 1 | awk '{print $2}' | tr -d '"'\'' ' || true)
+            if [[ -n "${proj_name}" ]]; then
+              proj_clean="${proj_name//_/-}"
+              if [[ "${proj_clean}" != "${repo_clean}" ]] && ! [[ "${proj_clean}" =~ ^${repo_clean} ]]; then
+                echo "::error file=${compose_file}::Compose 项目名称 '${proj_name}' 与仓库名称 '${repo}' 不一致，必须以仓库名作为统一命名空间。"
+                exit 1
+              fi
+            fi
+          done < <(find . -maxdepth 3 -type f \( -name "*compose*.yml" -o -name "*compose*.yaml" \) ! -path "*/.*/*" 2>/dev/null || true)
+          echo "✅ 统一服务与容器命名契约校验通过"
 
       - name: Check no local database containers
         run: |
