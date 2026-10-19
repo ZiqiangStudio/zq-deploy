@@ -1,4 +1,4 @@
-FROM node:22-alpine
+FROM node:24-alpine
 
 RUN apk add --no-cache bash docker-cli docker-cli-compose jq
 WORKDIR /app
