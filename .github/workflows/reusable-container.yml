@@ -91,7 +91,66 @@ permissions:
   id-token: write
 
 jobs:
+  validate:
+    name: Validate project and deployment contracts
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Validate PR title
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -Eeuo pipefail
+          echo "Validating PR title: '${TITLE}'"
+          regex='^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(?:\([a-z0-9][a-z0-9._/-]*\))?!?: [\u4e00-\u9fff].+$'
+          if ! [[ "${TITLE}" =~ ${regex} ]]; then
+            echo "::error::PR 标题 '${TITLE}' 不符合规范。格式须为: <type>(<scope>): <中文描述>，例如: feat(auth): 升级登录流程"
+            exit 1
+          fi
+          echo "✅ PR 标题格式校验通过"
+
+      - name: Validate naming conventions
+        env:
+          REPO_NAME: ${{ github.event.repository.name }}
+        run: |
+          set -Eeuo pipefail
+          if ! [[ "${REPO_NAME}" =~ ^[a-z0-9][a-z0-9._-]*[a-z0-9]$ ]]; then
+            echo "::error::仓库名称 '${REPO_NAME}' 不符合规范。命名仅允许小写字母、数字、中划线与下划线。"
+            exit 1
+          fi
+          echo "✅ 服务命名规范校验通过"
+
+      - name: Check no local database containers
+        run: |
+          set -Eeuo pipefail
+          disallowed_regex='image:[[:space:]]*["'\'']?(mysql|mariadb|postgres|postgresql|mongo|mongodb)(:[^[:space:]"\''#]+)?'
+          dockerfile_regex='^FROM[[:space:]]+(mysql|mariadb|postgres|postgresql|mongo|mongodb)'
+          failed=0
+
+          while IFS= read -r file; do
+            if grep -E -i "${disallowed_regex}" "${file}" >/dev/null 2>&1; then
+              echo "::error file=${file}::检测到禁止的本地自建数据库镜像。生产环境数据库必须使用自强统一的阿里云 RDS MySQL，缓存使用服务器统一 redis-shared，严禁在生产配置中自建数据库容器。"
+              failed=1
+            fi
+          done < <(find . -maxdepth 3 -type f \( -name "*compose*.yml" -o -name "*compose*.yaml" \) ! -path "*/.*/*" 2>/dev/null || true)
+
+          while IFS= read -r file; do
+            if grep -E -i "${dockerfile_regex}" "${file}" >/dev/null 2>&1; then
+              echo "::error file=${file}::检测到基于原生数据库镜像的 Dockerfile。生产环境严禁直接打包或自建本地数据库容器。"
+              failed=1
+            fi
+          done < <(find . -maxdepth 3 -type f \( -name "Dockerfile*" -o -name "*.dockerfile" \) ! -path "*/.*/*" 2>/dev/null || true)
+
+          if (( failed != 0 )); then
+            exit 1
+          fi
+          echo "✅ 无本地自建数据库校验通过"
+
   image:
+    needs: validate
     if: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
     name: Build and publish images
     runs-on: ubuntu-24.04
