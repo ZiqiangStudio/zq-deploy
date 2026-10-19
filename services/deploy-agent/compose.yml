@@ -11,6 +11,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - /etc/zq-platform/deployments:/deployments:ro
       - /etc/zq-platform/deploy-agent:/agent-control
+      - ${CONTROL_PLANE_HOST_DIR:?CONTROL_PLANE_HOST_DIR is required}:/control-plane
 
 secrets:
   registry-username:
