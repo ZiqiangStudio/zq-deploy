@@ -2,8 +2,20 @@ name: Platform services
 
 on:
   pull_request:
+    paths:
+      - '.github/actions/registry-login/**'
+      - '.github/workflows/platform-services.yml'
+      - '.github/workflows/reusable-container.yml'
+      - 'services/**'
+      - 'adapters/registry/**'
   push:
     branches: [main]
+    paths:
+      - '.github/actions/registry-login/**'
+      - '.github/workflows/platform-services.yml'
+      - '.github/workflows/reusable-container.yml'
+      - 'services/**'
+      - 'adapters/registry/**'
 
 permissions:
   contents: read
