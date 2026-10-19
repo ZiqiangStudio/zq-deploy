@@ -6,7 +6,7 @@ on:
       environment:
         description: GitHub Environment and logical deployment target.
         type: string
-        required: true
+        default: production
       image-refs:
         description: JSON object of logical image names to immutable digest references.
         type: string

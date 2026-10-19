@@ -7,15 +7,23 @@ on:
         required: false
       registry_password:
         required: false
+      DOCKER_USERNAME:
+        required: false
+      DOCKER_PASSWORD:
+        required: false
+      REGISTRY_USERNAME:
+        required: false
+      REGISTRY_PASSWORD:
+        required: false
     inputs:
       images:
         description: JSON array of images to build or pin.
         type: string
-        required: true
+        default: ''
       registry:
         description: Central container registry hostname.
         type: string
-        required: true
+        default: registry.cn-hangzhou.aliyuncs.com
       registry-provider:
         description: Registry authentication adapter.
         type: string
@@ -43,7 +51,7 @@ on:
       registry-namespace:
         description: Central container registry namespace.
         type: string
-        required: true
+        default: ziqiang_studio
       internal-registry:
         description: Central internal registry hostname for dependency images.
         type: string
@@ -51,11 +59,11 @@ on:
       deploy:
         description: Create a GitHub Deployment for the central control plane after publishing images.
         type: boolean
-        default: false
+        default: true
       environment:
         description: GitHub Environment and logical deployment target.
         type: string
-        required: true
+        default: production
       validate-script:
         description: Project-local deployment contract validation script.
         type: string
@@ -108,8 +116,8 @@ jobs:
         with:
           provider: ${{ inputs.registry-provider }}
           registry: ${{ inputs.registry }}
-          username: ${{ secrets.registry_username }}
-          password: ${{ secrets.registry_password }}
+          username: ${{ secrets.registry_username || secrets.DOCKER_USERNAME || secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.registry_password || secrets.DOCKER_PASSWORD || secrets.REGISTRY_PASSWORD }}
           oidc-provider-arn: ${{ inputs.registry-oidc-provider-arn }}
           role-arn: ${{ inputs.registry-role-arn }}
           region-id: ${{ inputs.registry-region }}
@@ -119,7 +127,7 @@ jobs:
       - name: Build and publish images
         id: build
         env:
-          IMAGE_DEFINITIONS: ${{ inputs.images }}
+          IMAGE_DEFINITIONS: ${{ inputs.images || format('[{"name":"default","image":"{0}"}]', github.event.repository.name) }}
           PUSH_IMAGES: ${{ github.event_name != 'pull_request' }}
           REGISTRY_HOST: ${{ inputs.registry }}
           REGISTRY_NAMESPACE: ${{ inputs.registry-namespace }}
