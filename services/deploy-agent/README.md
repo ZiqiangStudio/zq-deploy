@@ -15,7 +15,7 @@
 
 代理需要访问 Docker socket，因此应使用专用系统用户、最小化部署目录权限，并只在受信任服务器上运行。
 
-代理使用服务器 `.env` 中的注册表凭据登录中央注册表，不会把凭据传给部署脚本；任务结束后立即退出注册表会话。GHCR 私有镜像需要使用专用机器身份的 `read:packages` 凭据，不能依赖 GitHub App installation token。
+代理使用服务器 Docker secret 中的注册表凭据登录中央注册表，不会把凭据传给部署脚本；任务结束后立即退出注册表会话。GHCR 私有镜像需要使用专用机器身份的 `read:packages` 凭据，不能依赖 GitHub App installation token。凭据文件由主机以 `0600` 保存并以只读 secret 挂载到代理。
 
 `REGISTRY_HOST` 和 `REGISTRY_USERNAME` 是服务器配置，不写入业务仓库；它们必须与镜像引用使用的中央注册表一致。
 

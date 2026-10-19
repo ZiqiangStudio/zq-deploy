@@ -4,7 +4,13 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    secrets:
+      - ghcr-read-token
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /etc/zq-platform/deployments:/deployments:ro
       - /etc/zq-platform/deploy-agent:/agent-control
+
+secrets:
+  ghcr-read-token:
+    file: /etc/zq-platform/secrets/ghcr-read-token

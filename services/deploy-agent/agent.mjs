@@ -1,8 +1,9 @@
 import { promises as fs } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 
-const required = ['DEPLOYER_URL', 'DEPLOY_AGENT_ID', 'DEPLOY_AGENT_TOKEN', 'DEPLOY_MANIFEST_DIR', 'AGENT_UPDATE_DIR', 'REGISTRY_HOST', 'REGISTRY_USERNAME', 'REGISTRY_TOKEN'];
+const required = ['DEPLOYER_URL', 'DEPLOY_AGENT_ID', 'DEPLOY_AGENT_TOKEN', 'DEPLOY_MANIFEST_DIR', 'AGENT_UPDATE_DIR', 'REGISTRY_HOST', 'REGISTRY_USERNAME', 'REGISTRY_TOKEN_FILE'];
 for (const name of required) {
   if (!process.env[name]) throw new Error(`Missing ${name}`);
 }
@@ -15,9 +16,11 @@ const config = {
   agentUpdateDir: process.env.AGENT_UPDATE_DIR,
   registryHost: process.env.REGISTRY_HOST,
   registryUsername: process.env.REGISTRY_USERNAME,
-  registryToken: process.env.REGISTRY_TOKEN,
+  registryTokenFile: process.env.REGISTRY_TOKEN_FILE,
   intervalMs: Number(process.env.DEPLOY_INTERVAL_MS || 5000),
 };
+config.registryToken = readFileSync(config.registryTokenFile, 'utf8').trim();
+if (!config.registryToken) throw new Error('REGISTRY_TOKEN_FILE is empty');
 if (!Number.isInteger(config.intervalMs) || config.intervalMs < 1000) throw new Error('DEPLOY_INTERVAL_MS must be at least 1000');
 if (!/^[a-zA-Z0-9._-]+$/.test(config.agentId)) throw new Error('DEPLOY_AGENT_ID contains unsupported characters');
 
