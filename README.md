@@ -102,7 +102,7 @@ permissions:
 
 jobs:
   deploy:
-    uses: ZiqiangStudio/zq-platform/.github/workflows/reusable-container.yml@main
+    uses: ZiqiangStudio/zq-deploy/.github/workflows/reusable-container.yml@main
     with:
       images: >-
         [{"name":"default","image":"example-service"}]

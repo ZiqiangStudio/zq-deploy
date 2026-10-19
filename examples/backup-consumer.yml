@@ -11,7 +11,7 @@ on:
 
 jobs:
   backup:
-    uses: ZiqiangStudio/zq-platform/.github/workflows/reusable-backup-restore.yml@main
+    uses: ZiqiangStudio/zq-deploy/.github/workflows/reusable-backup-restore.yml@main
     with:
       operation: ${{ inputs.operation }}
       service-id: example-service

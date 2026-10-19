@@ -108,7 +108,7 @@ jobs:
 
       - name: Authenticate container registry
         if: ${{ github.event_name != 'pull_request' }}
-        uses: ZiqiangStudio/zq-platform/.github/actions/registry-login@main
+        uses: ZiqiangStudio/zq-deploy/.github/actions/registry-login@main
         with:
           provider: ${{ inputs.registry-provider }}
           registry: ${{ inputs.registry }}

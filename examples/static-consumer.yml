@@ -7,7 +7,7 @@ on:
 
 jobs:
   deploy:
-    uses: ZiqiangStudio/zq-platform/.github/workflows/reusable-static.yml@main
+    uses: ZiqiangStudio/zq-deploy/.github/workflows/reusable-static.yml@main
     with:
       build-command: npm run build
       artifact-path: dist

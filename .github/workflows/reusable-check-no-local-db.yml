@@ -1,0 +1,48 @@
+name: 'Reusable Check: No Local Database'
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  check-db:
+    name: Check no local database container
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Scan for embedded database containers
+        run: |
+          set -Eeuo pipefail
+          echo "Scanning configuration files for embedded databases..."
+          failed=0
+
+          # Search for disallowed database images in Dockerfiles and Compose files
+          disallowed_regex='image:[[:space:]]*["'\'']?(mysql|mariadb|postgres|postgresql|mongo|mongodb)(:[^[:space:]"\''#]+)?'
+          dockerfile_regex='^FROM[[:space:]]+(mysql|mariadb|postgres|postgresql|mongo|mongodb)'
+
+          while IFS= read -r file; do
+            if grep -E -i "${disallowed_regex}" "${file}" >/dev/null 2>&1; then
+              echo "::error file=${file}::检测到禁止的本地自建数据库镜像引用。生产环境关系型数据库必须使用自强统一的阿里云 RDS MySQL，缓存使用服务器统一 redis-shared，严禁在生产配置中自建数据库容器。"
+              failed=1
+            fi
+          done < <(find . -maxdepth 3 -type f \( -name "*compose*.yml" -o -name "*compose*.yaml" \) ! -path "*/.*/*" 2>/dev/null || true)
+
+          while IFS= read -r file; do
+            if grep -E -i "${dockerfile_regex}" "${file}" >/dev/null 2>&1; then
+              echo "::error file=${file}::检测到基于原生数据库镜像的 Dockerfile。生产环境严禁直接打包或自建本地数据库容器。"
+              failed=1
+            fi
+          done < <(find . -maxdepth 3 -type f \( -name "Dockerfile*" -o -name "*.dockerfile" \) ! -path "*/.*/*" 2>/dev/null || true)
+
+          if (( failed != 0 )); then
+            echo ""
+            echo "❌ 检查未通过：检测到本地自建数据库定义。"
+            echo "💡 规范指引：自强所有业务项目生产数据统一存放在阿里云 RDS MySQL，请通过环境变量 DATABASE_URL 接入云端数据库。"
+            exit 1
+          fi
+
+          echo "✅ 校验通过：未发现本地自建数据库容器定义。"

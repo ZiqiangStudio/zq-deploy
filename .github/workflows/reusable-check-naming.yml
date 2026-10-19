@@ -1,0 +1,40 @@
+name: 'Reusable Check: Service and Container Naming'
+
+on:
+  workflow_call:
+    inputs:
+      service-name:
+        description: Service or container name to validate (defaults to repository name).
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  check-naming:
+    name: Check service and container naming convention
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Validate naming conventions
+        env:
+          SERVICE_NAME: ${{ inputs.service-name || github.event.repository.name }}
+        run: |
+          set -Eeuo pipefail
+          name="${SERVICE_NAME}"
+          echo "Validating service name: ${name}"
+
+          # Naming must be lowercase alphanumeric with hyphens or underscores
+          if ! [[ "${name}" =~ ^[a-z0-9][a-z0-9._-]*[a-z0-9]$ ]]; then
+            echo "::error::服务名称 '${name}' 不符合规范。命名仅允许小写字母、数字、中划线与下划线，且首尾必须为字母或数字。"
+            exit 1
+          fi
+
+          # Disallow generic or placeholder names
+          disallowed_names='^(test|temp|tmp|debug|demo|default|example|YOUR_PROJECT_NAME)$'
+          if [[ "${name}" =~ ${disallowed_names} ]]; then
+            echo "::error::服务名称 '${name}' 属于通用占位符或保留词，请使用明确关联业务仓库的规范名称。"
+            exit 1
+          fi
+
+          echo "✅ 校验通过：服务与容器命名符合平台规范 (${name})。"

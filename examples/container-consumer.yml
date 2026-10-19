@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   deploy:
-    uses: ZiqiangStudio/zq-platform/.github/workflows/reusable-container.yml@main
+    uses: ZiqiangStudio/zq-deploy/.github/workflows/reusable-container.yml@main
     with:
       registry: ghcr.io
       registry-namespace: ziqiangstudio
