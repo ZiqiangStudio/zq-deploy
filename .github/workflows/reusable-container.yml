@@ -123,7 +123,8 @@ jobs:
       - name: Build and publish images
         id: build
         env:
-          IMAGE_DEFINITIONS: ${{ inputs.images || format('[{"name":"default","image":"{0}"}]', github.event.repository.name) }}
+          IMAGE_DEFINITIONS: ${{ inputs.images }}
+          DEFAULT_IMAGE: ${{ github.event.repository.name }}
           PUSH_IMAGES: ${{ github.event_name != 'pull_request' }}
           REGISTRY_HOST: ${{ inputs.registry }}
           REGISTRY_NAMESPACE: ${{ inputs.registry-namespace }}
@@ -131,6 +132,10 @@ jobs:
         run: |
           set -Eeuo pipefail
           command -v jq >/dev/null
+          definitions="${IMAGE_DEFINITIONS}"
+          if [[ -z "${definitions}" ]]; then
+            definitions="[{\"name\":\"default\",\"image\":\"${DEFAULT_IMAGE}\"}]"
+          fi
           refs='{}'
           first_digest=''
 
@@ -187,7 +192,7 @@ jobs:
             fi
             refs=$(jq -c --arg name "${name}" --arg ref "${ref}" '. + {($name): $ref}' <<<"${refs}")
             rm -f "${metadata}"
-          done < <(jq -cer 'if type == "array" and length > 0 then .[] else error("images must be a non-empty array") end' <<<"${IMAGE_DEFINITIONS}")
+          done < <(jq -cer 'if type == "array" and length > 0 then .[] else error("images must be a non-empty array") end' <<<"${definitions}")
 
           echo "image-refs=${refs}" >>"${GITHUB_OUTPUT}"
           echo "image-digest=${first_digest}" >>"${GITHUB_OUTPUT}"
