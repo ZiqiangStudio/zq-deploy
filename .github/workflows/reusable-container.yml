@@ -11,10 +11,6 @@ on:
         required: false
       DOCKER_PASSWORD:
         required: false
-      REGISTRY_USERNAME:
-        required: false
-      REGISTRY_PASSWORD:
-        required: false
     inputs:
       images:
         description: JSON array of images to build or pin.
