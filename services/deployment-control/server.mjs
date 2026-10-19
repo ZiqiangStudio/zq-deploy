@@ -364,12 +364,83 @@ async function reportJob(request, response, id) {
   json(response, 200, { status: job.status });
 }
 
+let servicesCache = null;
+let servicesCacheExpiresAt = 0;
+
+async function getServices() {
+  const now = Date.now();
+  if (servicesCache && servicesCacheExpiresAt > now) {
+    return servicesCache;
+  }
+  try {
+    const localPath = process.env.SERVICES_FILE || '/app/services.json';
+    const content = await readFile(localPath, 'utf8');
+    const parsed = JSON.parse(content);
+    servicesCache = parsed.services || {};
+    servicesCacheExpiresAt = now + 60_000;
+    return servicesCache;
+  } catch {}
+
+  try {
+    const file = await githubApi('/repos/ZiqiangStudio/zq-deploy/contents/services.json');
+    if (file && file.content) {
+      const content = Buffer.from(file.content, 'base64').toString('utf8');
+      const parsed = JSON.parse(content);
+      servicesCache = parsed.services || {};
+      servicesCacheExpiresAt = now + 60_000;
+      return servicesCache;
+    }
+  } catch (err) {
+    console.error('Failed to fetch services.json from GitHub:', err.message);
+  }
+
+  return servicesCache || {};
+}
+
+async function handlePushEvent(event) {
+  const ref = event.ref;
+  const repoName = event.repository?.name;
+  const repoFullName = event.repository?.full_name;
+  const sha = event.after;
+
+  if (!repoName || !sha || sha === '0000000000000000000000000000000000000000') return;
+
+  const services = await getServices();
+  const serviceConfig = services[repoName];
+  if (!serviceConfig) return;
+
+  const targetBranch = serviceConfig.branch || 'main';
+  if (ref !== `refs/heads/${targetBranch}`) return;
+
+  console.log(`[GitOps] Detected push to ${repoFullName}@${targetBranch} (${sha}). Dispatching central build...`);
+
+  const token = await githubToken();
+  await githubApi('/repos/ZiqiangStudio/zq-deploy/actions/workflows/central-build-deploy.yml/dispatches', {
+    method: 'POST',
+    body: JSON.stringify({
+      ref: 'main',
+      inputs: {
+        repository: repoFullName,
+        sha,
+        service: serviceConfig.service || repoName,
+        domain: serviceConfig.domain || '',
+        port: String(serviceConfig.port || '8000'),
+        dockerfile: serviceConfig.dockerfile || 'Dockerfile',
+        environment: serviceConfig.environment || 'production',
+        auth_token: token,
+      },
+    }),
+  });
+  console.log(`[GitOps] Central build dispatched successfully for ${repoName}`);
+}
+
 async function handleWebhook(request, response) {
   const raw = await readBody(request);
   if (!validSignature(raw, request.headers['x-hub-signature-256'])) return response.writeHead(401).end('invalid signature');
   const eventName = request.headers['x-github-event'];
-  if (!['deployment', 'deployment_status'].includes(eventName)) return response.writeHead(204).end();
+  if (!['deployment', 'deployment_status', 'push'].includes(eventName)) return response.writeHead(204).end();
   const event = JSON.parse(raw.toString('utf8'));
+  if (eventName === 'push') await handlePushEvent(event);
   if (eventName === 'deployment') await enqueueDeployment(event);
   if (eventName === 'deployment_status') {
     const deployment = event.deployment;

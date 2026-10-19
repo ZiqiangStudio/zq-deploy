@@ -1,0 +1,133 @@
+name: Central Build & Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      repository:
+        description: 'Target GitHub repository (e.g. ZiqiangStudio/zq_auth_backend)'
+        required: true
+        type: string
+      sha:
+        description: 'Commit SHA to build and deploy'
+        required: true
+        type: string
+      service:
+        description: 'Logical service name'
+        required: true
+        type: string
+      domain:
+        description: 'Public domain(s) for Traefik routing'
+        required: false
+        type: string
+        default: ''
+      port:
+        description: 'Container internal port'
+        required: false
+        type: string
+        default: '8000'
+      dockerfile:
+        description: 'Path to Dockerfile'
+        required: false
+        type: string
+        default: 'Dockerfile'
+      environment:
+        description: 'Deployment environment'
+        required: false
+        type: string
+        default: 'production'
+      auth_token:
+        description: 'GitHub Token with read access to target repository'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+  packages: write
+  deployments: write
+  id-token: write
+
+concurrency:
+  group: central-deploy-${{ inputs.service }}-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    name: Build & Deploy ${{ inputs.service }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out target source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.repository }}
+          ref: ${{ inputs.sha }}
+          token: ${{ inputs.auth_token || secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Aliyun ACR
+        uses: docker/login-action@v3
+        with:
+          registry: registry.cn-hangzhou.aliyuncs.com
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: Build and push image
+        id: build
+        run: |
+          set -Eeuo pipefail
+          service_name="${{ inputs.service }}"
+          image_tag="registry.cn-hangzhou.aliyuncs.com/ziqiang_studio/${service_name}:default-${{ inputs.sha }}"
+          metadata=$(mktemp)
+
+          docker buildx build \
+            --file "${{ inputs.dockerfile }}" \
+            --tag "${image_tag}" \
+            --label "org.opencontainers.image.revision=${{ inputs.sha }}" \
+            --metadata-file "${metadata}" \
+            --push \
+            .
+
+          digest=$(jq -er '."containerimage.digest"' "${metadata}")
+          image_ref="registry.cn-hangzhou.aliyuncs.com/ziqiang_studio/${service_name}@${digest}"
+          echo "image_ref=${image_ref}" >> "$GITHUB_OUTPUT"
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Deployment
+        uses: actions/github-script@v7
+        env:
+          TARGET_REPO: ${{ inputs.repository }}
+          TARGET_SHA: ${{ inputs.sha }}
+          SERVICE: ${{ inputs.service }}
+          IMAGE_REF: ${{ steps.build.outputs.image_ref }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          DOMAIN: ${{ inputs.domain }}
+          PORT: ${{ inputs.port }}
+          DEPLOY_ENV: ${{ inputs.environment }}
+        with:
+          github-token: ${{ inputs.auth_token || secrets.GITHUB_TOKEN }}
+          script: |
+            const [owner, repo] = process.env.TARGET_REPO.split('/');
+            const payload = {
+              schema: 'zq-platform/deployment/v1',
+              service: process.env.SERVICE,
+              repository: process.env.TARGET_REPO,
+              sha: process.env.TARGET_SHA,
+              image_refs: { default: process.env.IMAGE_REF },
+              image_digest: process.env.DIGEST,
+              domain: process.env.DOMAIN || null,
+              port: process.env.PORT || null,
+              healthcheck_path: null,
+            };
+            const { data: deployment } = await github.rest.repos.createDeployment({
+              owner,
+              repo,
+              ref: process.env.TARGET_SHA,
+              environment: process.env.DEPLOY_ENV,
+              description: `中央自动部署：${process.env.DEPLOY_ENV}`,
+              payload: JSON.stringify(payload),
+              auto_merge: false,
+              required_contexts: [],
+            });
+            core.info(`Created deployment ${deployment.id} for ${process.env.TARGET_REPO}@${process.env.TARGET_SHA}`);

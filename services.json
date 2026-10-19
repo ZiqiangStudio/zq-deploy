@@ -1,0 +1,35 @@
+{
+  "schema": "zq-deploy/services/v1",
+  "services": {
+    "zq_auth_backend": {
+      "repository": "ZiqiangStudio/zq_auth_backend",
+      "service": "zq_auth",
+      "branch": "main",
+      "domain": "api.cas.ziqiang.net.cn",
+      "port": "8000",
+      "target": "zq1",
+      "environment": "production",
+      "dockerfile": "docker/django/Dockerfile"
+    },
+    "zq_index": {
+      "repository": "ZiqiangStudio/zq_index",
+      "service": "zq_index",
+      "branch": "main",
+      "domain": "ziqiang.net.cn,www.ziqiang.net.cn",
+      "port": "8082",
+      "target": "zq1",
+      "environment": "production",
+      "dockerfile": "Dockerfile"
+    },
+    "zq_recruitment_backend": {
+      "repository": "ZiqiangStudio/zq_recruitment_backend",
+      "service": "zq_recruitment_backend",
+      "branch": "main",
+      "domain": "api.join.ziqiang.net.cn",
+      "port": "8000",
+      "target": "zq1",
+      "environment": "production",
+      "dockerfile": "docker/django/Dockerfile"
+    }
+  }
+}
