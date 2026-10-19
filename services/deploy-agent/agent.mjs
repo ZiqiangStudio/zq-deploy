@@ -1,7 +1,10 @@
 import { promises as fs } from 'node:fs';
 import { readFileSync } from 'node:fs';
-import { spawn } from 'node:child_process';
+import { spawn, execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import path from 'node:path';
+
+const execFileAsync = promisify(execFile);
 
 const required = ['DEPLOYER_URL', 'DEPLOY_AGENT_ID', 'DEPLOY_AGENT_TOKEN', 'DEPLOY_MANIFEST_DIR', 'AGENT_UPDATE_DIR', 'REGISTRY_HOST', 'REGISTRY_USERNAME_FILE', 'REGISTRY_TOKEN_FILE'];
 for (const name of required) {
@@ -97,26 +100,114 @@ async function promoteAgentUpgrade(job) {
   await fs.rename(pending, desired);
 }
 
+async function executeStandardDeployment(job) {
+  const service = job.service;
+  const image = job.imageDigest || Object.values(job.imageRefs || {})[0];
+  if (!image) throw new Error('no image reference provided for deployment');
+
+  console.log(`[${service}] pulling image ${image}...`);
+  await execFileAsync('docker', ['pull', image]);
+
+  const targetName = service;
+  const tempName = `${service}-new-${Date.now()}`;
+
+  const args = [
+    'run', '-d',
+    '--name', tempName,
+    '--restart', 'unless-stopped',
+    '--network', 'traefik',
+  ];
+
+  const secretEnv = `/etc/zq-platform/secrets/${service}.env`;
+  try {
+    await fs.access(secretEnv);
+    args.push('--env-file', secretEnv);
+  } catch {}
+
+  if (job.domain) {
+    const domains = job.domain.split(',').map(d => d.trim()).filter(Boolean);
+    const domainRule = domains.map(d => `Host(\`${d}\`)`).join(' || ');
+    const port = String(job.port || 80);
+    args.push(
+      '--label', 'traefik.enable=true',
+      '--label', 'traefik.docker.network=traefik',
+      '--label', `traefik.http.routers.${service}.rule=${domainRule}`,
+      '--label', `traefik.http.routers.${service}.entrypoints=websecure`,
+      '--label', `traefik.http.services.${service}.loadbalancer.server.port=${port}`
+    );
+  }
+
+  args.push(image);
+
+  console.log(`[${service}] starting container ${tempName}...`);
+  await execFileAsync('docker', args);
+
+  console.log(`[${service}] waiting for container to become ready...`);
+  let ready = false;
+  for (let i = 0; i < 15; i++) {
+    await new Promise(r => setTimeout(r, 2000));
+    try {
+      const { stdout } = await execFileAsync('docker', [
+        'inspect',
+        '--format',
+        '{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}',
+        tempName,
+      ]);
+      const [status, health] = stdout.trim().split('|');
+      if (status === 'running' && (health === 'healthy' || health === 'none')) {
+        ready = true;
+        break;
+      }
+      if (status === 'exited' || health === 'unhealthy') {
+        break;
+      }
+    } catch {}
+  }
+
+  if (!ready) {
+    console.error(`[${service}] container failed health check, cleaning up ${tempName}...`);
+    await execFileAsync('docker', ['rm', '-f', tempName]).catch(() => {});
+    throw new Error(`container ${tempName} did not become ready or healthy`);
+  }
+
+  console.log(`[${service}] promoting ${tempName} to ${targetName}...`);
+  await execFileAsync('docker', ['rm', '-f', targetName]).catch(() => {});
+  await execFileAsync('docker', ['rename', tempName, targetName]);
+
+  await execFileAsync('docker', ['image', 'prune', '-f', '--filter', 'until=168h']).catch(() => {});
+  console.log(`[${service}] deployment complete!`);
+}
+
 async function execute(job) {
   if (!/^[a-zA-Z0-9._-]+$/.test(job.service)) throw new Error('job service contains unsupported characters');
   await prepareAgentUpgrade(job);
   const loggedIn = await loginRegistries(job);
   try {
-    const script = `${config.manifestDir}/${job.service}/deploy.sh`;
-    const child = spawn('bash', [script], {
-      stdio: 'inherit',
-      env: {
-        ...process.env,
-        DEPLOY_ENVIRONMENT: job.environment,
-        IMAGE_REFS: JSON.stringify(job.imageRefs),
-        GITHUB_SHA: job.sha,
-        DEPLOYMENT_ID: String(job.deploymentId),
-      },
-    });
-    await new Promise((resolve, reject) => {
-      child.once('error', reject);
-      child.once('exit', code => code === 0 ? resolve() : reject(new Error(`deployment adapter exited with code ${code}`)));
-    });
+    const customScript = `${config.manifestDir}/${job.service}/deploy.sh`;
+    let hasCustomScript = false;
+    try {
+      await fs.access(customScript, fs.constants.X_OK);
+      hasCustomScript = true;
+    } catch {}
+
+    if (hasCustomScript) {
+      const child = spawn('bash', [customScript], {
+        stdio: 'inherit',
+        env: {
+          ...process.env,
+          DEPLOY_ENVIRONMENT: job.environment,
+          IMAGE_REFS: JSON.stringify(job.imageRefs),
+          GITHUB_SHA: job.sha,
+          DEPLOYMENT_ID: String(job.deploymentId),
+        },
+      });
+      await new Promise((resolve, reject) => {
+        child.once('error', reject);
+        child.once('exit', code => code === 0 ? resolve() : reject(new Error(`deployment adapter exited with code ${code}`)));
+      });
+    } else {
+      await executeStandardDeployment(job);
+    }
   } finally {
     await logoutRegistries(loggedIn);
   }

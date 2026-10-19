@@ -60,6 +60,18 @@ on:
         description: Project-local deployment contract validation script.
         type: string
         default: ""
+      domain:
+        description: Public domain(s) for Traefik routing (comma-separated).
+        type: string
+        default: ''
+      port:
+        description: Application port for the Traefik load balancer.
+        type: string
+        default: ''
+      healthcheck-path:
+        description: Container healthcheck HTTP path.
+        type: string
+        default: ''
     outputs:
       image-refs:
         description: JSON object mapping image names to immutable refs.
@@ -190,6 +202,9 @@ jobs:
       environment: ${{ inputs.environment }}
       image-refs: ${{ needs.image.outputs.image-refs }}
       image-digest: ${{ needs.image.outputs.image-digest }}
+      domain: ${{ inputs.domain }}
+      port: ${{ inputs.port }}
+      healthcheck-path: ${{ inputs.healthcheck-path }}
     permissions:
       contents: read
       deployments: write

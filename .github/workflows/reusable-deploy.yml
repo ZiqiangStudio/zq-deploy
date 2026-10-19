@@ -15,6 +15,21 @@ on:
         description: Primary image digest used by Project synchronization.
         type: string
         required: false
+      domain:
+        description: Public domain(s) for Traefik routing.
+        type: string
+        required: false
+        default: ''
+      port:
+        description: Application port for Traefik routing.
+        type: string
+        required: false
+        default: ''
+      healthcheck-path:
+        description: Container healthcheck HTTP path.
+        type: string
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -36,6 +51,9 @@ jobs:
           DEPLOYMENT_ENVIRONMENT: ${{ inputs.environment }}
           IMAGE_REFS: ${{ inputs.image-refs }}
           IMAGE_DIGEST: ${{ inputs.image-digest }}
+          DOMAIN: ${{ inputs.domain }}
+          PORT: ${{ inputs.port }}
+          HEALTHCHECK_PATH: ${{ inputs.healthcheck-path }}
         with:
           github-token: ${{ github.token }}
           script: |
@@ -56,6 +74,9 @@ jobs:
               sha: context.sha,
               image_refs: imageRefs,
               image_digest: process.env.IMAGE_DIGEST || null,
+              domain: process.env.DOMAIN || null,
+              port: process.env.PORT || null,
+              healthcheck_path: process.env.HEALTHCHECK_PATH || null,
             };
             const { data: deployment } = await github.rest.repos.createDeployment({
               owner: context.repo.owner,
