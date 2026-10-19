@@ -14,6 +14,9 @@ jobs:
   deploy:
     uses: ZiqiangStudio/zq-platform/.github/workflows/reusable-container.yml@main
     with:
+      registry: ghcr.io
+      registry-namespace: ziqiangstudio
+      registry-provider: github
       images: >-
         [{"name":"default","image":"example-service"}]
       deploy: true

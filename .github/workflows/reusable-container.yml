@@ -15,15 +15,39 @@ on:
       registry:
         description: Central container registry hostname.
         type: string
-        default: registry.cn-hangzhou.aliyuncs.com
+        required: true
+      registry-provider:
+        description: Registry authentication adapter.
+        type: string
+        default: static
+      registry-region:
+        description: Provider-specific registry region.
+        type: string
+        default: ''
+      registry-instance-id:
+        description: Provider-specific registry instance identifier.
+        type: string
+        default: ''
+      registry-oidc-provider-arn:
+        description: Provider-specific OIDC provider ARN.
+        type: string
+        default: ''
+      registry-role-arn:
+        description: Provider-specific role ARN.
+        type: string
+        default: ''
+      registry-audience:
+        description: Provider-specific OIDC audience.
+        type: string
+        default: ''
       registry-namespace:
         description: Central container registry namespace.
         type: string
-        default: ziqiang_studio
+        required: true
       internal-registry:
         description: Central internal registry hostname for dependency images.
         type: string
-        default: registry-vpc.cn-hangzhou.aliyuncs.com
+        default: ''
       deploy:
         description: Create a GitHub Deployment for the central control plane after publishing images.
         type: boolean
@@ -48,6 +72,7 @@ permissions:
   contents: read
   packages: write
   deployments: write
+  id-token: write
 
 jobs:
   image:
@@ -65,21 +90,19 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
 
-      - name: Log in to GitHub Container Registry
-        if: ${{ github.event_name != 'pull_request' && inputs.registry == 'ghcr.io' }}
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
+      - name: Authenticate container registry
+        if: ${{ github.event_name != 'pull_request' }}
+        uses: ZiqiangStudio/zq-platform/.github/actions/registry-login@main
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Log in to external container registry
-        if: ${{ github.event_name != 'pull_request' && inputs.registry != 'ghcr.io' }}
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
-        with:
+          provider: ${{ inputs.registry-provider }}
           registry: ${{ inputs.registry }}
           username: ${{ secrets.registry_username }}
           password: ${{ secrets.registry_password }}
+          oidc-provider-arn: ${{ inputs.registry-oidc-provider-arn }}
+          role-arn: ${{ inputs.registry-role-arn }}
+          region-id: ${{ inputs.registry-region }}
+          instance-id: ${{ inputs.registry-instance-id }}
+          audience: ${{ inputs.registry-audience }}
 
       - name: Build and publish images
         id: build
@@ -104,7 +127,9 @@ jobs:
               registry_kind=$(jq -r '.registry // "main"' <<<"${item}")
               case "${registry_kind}" in
                 main) dependency_registry="${REGISTRY_HOST}" ;;
-                internal) dependency_registry="${INTERNAL_REGISTRY_HOST}" ;;
+                internal)
+                  [[ -n "${INTERNAL_REGISTRY_HOST}" ]] || { echo 'internal-registry is required for internal dependencies' >&2; exit 1; }
+                  dependency_registry="${INTERNAL_REGISTRY_HOST}" ;;
                 *) echo "unsupported dependency registry: ${registry_kind}" >&2; exit 1 ;;
               esac
               ref="${dependency_registry}/${REGISTRY_NAMESPACE}/${image}@${digest}"
