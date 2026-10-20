@@ -144,8 +144,9 @@ jobs:
 
           while IFS= read -r compose_file; do
             [[ -f "${compose_file}" ]] || continue
+            [[ "${compose_file}" =~ /templates/ ]] && continue
             proj_name=$(grep -E '^[[:space:]]*name:[[:space:]]*' "${compose_file}" | head -n 1 | awk '{print $2}' | tr -d '"'\'' ' || true)
-            if [[ -n "${proj_name}" ]]; then
+            if [[ -n "${proj_name}" ]] && ! [[ "${proj_name}" =~ ^\$ ]]; then
               proj_clean="${proj_name//_/-}"
               if [[ "${proj_clean}" != "${repo_clean}" ]] && ! [[ "${proj_clean}" =~ ^${repo_clean} ]]; then
                 echo "::error file=${compose_file}::Compose 项目名称 '${proj_name}' 与仓库名称 '${repo}' 不一致，必须以仓库名作为统一命名空间。"
