@@ -105,11 +105,14 @@ jobs:
         run: |
           set -Eeuo pipefail
           echo "Validating PR title: '${TITLE}'"
-          regex='^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(?:\([a-z0-9][a-z0-9._/-]*\))?!?: [\u4e00-\u9fff].+$'
-          if ! [[ "${TITLE}" =~ ${regex} ]]; then
-            echo "::error::PR 标题 '${TITLE}' 不符合规范。格式须为: <type>(<scope>): <中文描述>，例如: feat(auth): 升级登录流程"
-            exit 1
-          fi
+          node -e '
+            const title = process.env.TITLE || "";
+            const regex = /^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z0-9._\/-]+\))?!?: [\u4e00-\u9fff].+/;
+            if (!regex.test(title)) {
+              console.error(`::error::PR 标题 "${title}" 不符合规范。格式须为: <type>(<scope>): <中文描述>，例如: feat(auth): 升级登录流程`);
+              process.exit(1);
+            }
+          '
           echo "✅ PR 标题格式校验通过"
 
       - name: Validate naming conventions
@@ -141,8 +144,9 @@ jobs:
 
           while IFS= read -r compose_file; do
             [[ -f "${compose_file}" ]] || continue
+            [[ "${compose_file}" =~ /templates/ ]] && continue
             proj_name=$(grep -E '^[[:space:]]*name:[[:space:]]*' "${compose_file}" | head -n 1 | awk '{print $2}' | tr -d '"'\'' ' || true)
-            if [[ -n "${proj_name}" ]]; then
+            if [[ -n "${proj_name}" ]] && ! [[ "${proj_name}" =~ ^\$ ]]; then
               proj_clean="${proj_name//_/-}"
               if [[ "${proj_clean}" != "${repo_clean}" ]] && ! [[ "${proj_clean}" =~ ^${repo_clean} ]]; then
                 echo "::error file=${compose_file}::Compose 项目名称 '${proj_name}' 与仓库名称 '${repo}' 不一致，必须以仓库名作为统一命名空间。"
