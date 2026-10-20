@@ -116,6 +116,11 @@ async function executeStandardDeployment(job) {
     '--name', tempName,
     '--restart', 'unless-stopped',
     '--network', 'traefik',
+    '--memory', process.env.DEFAULT_CONTAINER_MEMORY || '512m',
+    '--memory-swap', process.env.DEFAULT_CONTAINER_MEMORY || '512m',
+    '--cpus', process.env.DEFAULT_CONTAINER_CPUS || '1.5',
+    '--log-opt', 'max-size=50m',
+    '--log-opt', 'max-file=3',
   ];
 
   const secretEnv = `/etc/zq-deploy/secrets/${service}.env`;
