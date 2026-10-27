@@ -1,4 +1,4 @@
-name: Validate pull request title
+name: Validate pull request title and body
 
 on:
   workflow_call:
@@ -9,27 +9,43 @@ permissions:
 jobs:
   validate:
     if: ${{ github.event_name == 'pull_request' }}
-    name: Validate pull request title
+    name: Validate pull request title and body
     runs-on: ubuntu-24.04
     steps:
-      - name: Validate title format
+      - name: Validate title and body format
         env:
           PULL_REQUEST_TITLE: ${{ github.event.pull_request.title }}
+          PULL_REQUEST_BODY: ${{ github.event.pull_request.body }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          GITHUB_ACTOR: ${{ github.actor }}
         run: |
           python - <<'PY'
           import os
           import re
           import sys
 
-          title = os.environ["PULL_REQUEST_TITLE"]
-          pattern = re.compile(
+          title = os.environ.get("PULL_REQUEST_TITLE", "").strip()
+          body = os.environ.get("PULL_REQUEST_BODY", "").strip()
+          actor = os.environ.get("GITHUB_ACTOR", "")
+          author = os.environ.get("PR_AUTHOR", "")
+          is_bot = actor.endswith("[bot]") or author.endswith("[bot]")
+
+          title_pattern = re.compile(
               r"^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)"
-              r"(?:\([a-z0-9][a-z0-9._/-]*\))?!?: [\u4e00-\u9fff].+$"
+              r"(?:\([a-z0-9][a-z0-9._/-]*\))?!?: .+$"
           )
-          if not pattern.fullmatch(title):
+          if not title_pattern.fullmatch(title):
               print(f"无效的 PR 标题：{title}")
-              print("格式：type(scope): 中文描述")
-              print("示例：fix(deploy): 修复部署健康检查")
+              print("标题需符合约定式提交规范：type(scope): 描述")
+              print("示例：fix(deploy): 修复健康检查 或 chore(deps): bump actions/checkout from 4 to 7")
               sys.exit(1)
           print(f"PR 标题格式正确：{title}")
+
+          if not is_bot:
+              if not re.search(r"[\u4e00-\u9fff]", body):
+                  print("无效的 PR 正文：正文描述中必须包含中文说明（请简要陈述改动原因、核心变更与验证结果）。")
+                  sys.exit(1)
+              print("PR 正文包含有效中文说明。")
+          else:
+              print(f"检测到机器人账户 ({author})，跳过正文中文限制。")
           PY
