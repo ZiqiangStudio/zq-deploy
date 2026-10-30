@@ -123,11 +123,19 @@ async function executeStandardDeployment(job) {
     '--log-opt', 'max-file=3',
   ];
 
+  const commonEnv = process.env.COMMON_ENV_FILE || '/etc/zq-deploy/secrets/common.env';
+  try {
+    await fs.access(commonEnv);
+    args.push('--env-file', commonEnv);
+  } catch {}
+
   const secretEnv = `/etc/zq-deploy/secrets/${service}.env`;
   try {
     await fs.access(secretEnv);
     args.push('--env-file', secretEnv);
   } catch {}
+
+  args.push('--env', `OSS_PROJECT=${service.replace(/_/g, '-')}`);
 
   if (job.domain) {
     const domains = job.domain.split(',').map(d => d.trim()).filter(Boolean);
