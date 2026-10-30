@@ -5,6 +5,7 @@ payload:
   repository: Full GitHub repository name.
   sha: Source commit associated with the image.
   image_refs: Object of logical image names to immutable registry references ending in @sha256:digest.
+  env: Optional key-value object of non-sensitive environment variables from GitHub Actions variables.
 resolution:
   environment: maps to one active agent in the control plane's DEPLOY_TARGETS_JSON.
   agent: runs the repository's server-side deployment manifest for the service.
