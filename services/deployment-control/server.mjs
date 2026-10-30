@@ -302,7 +302,6 @@ async function enqueueDeployment(event) {
     domain: payload.domain || null,
     port: payload.port || null,
     healthcheckPath: payload.healthcheck_path || null,
-    env: payload.env && typeof payload.env === 'object' && !Array.isArray(payload.env) ? payload.env : null,
     status: 'queued',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),

@@ -137,14 +137,6 @@ async function executeStandardDeployment(job) {
 
   args.push('--env', `OSS_PROJECT=${service.replace(/_/g, '-')}`);
 
-  if (job.env && typeof job.env === 'object' && !Array.isArray(job.env)) {
-    for (const [key, value] of Object.entries(job.env)) {
-      if (key && typeof value === 'string') {
-        args.push('--env', `${key}=${value}`);
-      }
-    }
-  }
-
   if (job.domain) {
     const domains = job.domain.split(',').map(d => d.trim()).filter(Boolean);
     const domainRule = domains.map(d => `Host(\`${d}\`)`).join(' || ');

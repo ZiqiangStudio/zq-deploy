@@ -30,11 +30,6 @@ on:
         type: string
         required: false
         default: ''
-      env-json:
-        description: Optional JSON string of environment key-value pairs (e.g. from vars).
-        type: string
-        required: false
-        default: '{}'
 
 permissions:
   contents: read
@@ -59,7 +54,6 @@ jobs:
           DOMAIN: ${{ inputs.domain }}
           PORT: ${{ inputs.port }}
           HEALTHCHECK_PATH: ${{ inputs.healthcheck-path }}
-          ENV_JSON: ${{ inputs.env-json }}
         with:
           github-token: ${{ github.token }}
           script: |
@@ -73,19 +67,6 @@ jobs:
                 throw new Error(`image-refs.${name} must be an immutable image reference`);
               }
             }
-
-            let envVars = null;
-            if (process.env.ENV_JSON && process.env.ENV_JSON.trim()) {
-              try {
-                const parsed = JSON.parse(process.env.ENV_JSON);
-                if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && Object.keys(parsed).length > 0) {
-                  envVars = parsed;
-                }
-              } catch (e) {
-                throw new Error('env-json must be a valid JSON object string');
-              }
-            }
-
             const payload = {
               schema: 'zq-platform/deployment/v1',
               service: context.repo.repo,
@@ -96,7 +77,6 @@ jobs:
               domain: process.env.DOMAIN || null,
               port: process.env.PORT || null,
               healthcheck_path: process.env.HEALTHCHECK_PATH || null,
-              env: envVars,
             };
             const { data: deployment } = await github.rest.repos.createDeployment({
               owner: context.repo.owner,
