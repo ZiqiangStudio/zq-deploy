@@ -2,6 +2,7 @@ name: Deploy services
 
 on:
   pull_request:
+    types: [opened, edited, synchronize, reopened]
     paths:
       - '.github/actions/registry-login/**'
       - '.github/workflows/platform-services.yml'
