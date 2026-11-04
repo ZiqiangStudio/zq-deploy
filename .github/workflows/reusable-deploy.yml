@@ -30,6 +30,11 @@ on:
         type: string
         required: false
         default: ''
+      env-json:
+        description: Optional JSON string of environment key-value pairs (e.g. from vars).
+        type: string
+        required: false
+        default: '{}'
 
 permissions:
   contents: read
@@ -54,6 +59,8 @@ jobs:
           DOMAIN: ${{ inputs.domain }}
           PORT: ${{ inputs.port }}
           HEALTHCHECK_PATH: ${{ inputs.healthcheck-path }}
+          ENV_JSON: ${{ inputs.env-json }}
+          VARS_JSON: ${{ toJson(vars) }}
         with:
           github-token: ${{ github.token }}
           script: |
@@ -67,6 +74,27 @@ jobs:
                 throw new Error(`image-refs.${name} must be an immutable image reference`);
               }
             }
+            let envVars = {};
+            if (process.env.VARS_JSON && process.env.VARS_JSON.trim()) {
+              try {
+                const parsedVars = JSON.parse(process.env.VARS_JSON);
+                if (parsedVars && typeof parsedVars === 'object' && !Array.isArray(parsedVars)) {
+                  envVars = { ...parsedVars };
+                }
+              } catch {}
+            }
+
+            if (process.env.ENV_JSON && process.env.ENV_JSON.trim()) {
+              try {
+                const parsedEnv = JSON.parse(process.env.ENV_JSON);
+                if (parsedEnv && typeof parsedEnv === 'object' && !Array.isArray(parsedEnv)) {
+                  envVars = { ...envVars, ...parsedEnv };
+                }
+              } catch (e) {
+                throw new Error('env-json must be a valid JSON object string');
+              }
+            }
+
             const payload = {
               schema: 'zq-platform/deployment/v1',
               service: context.repo.repo,
@@ -77,6 +105,7 @@ jobs:
               domain: process.env.DOMAIN || null,
               port: process.env.PORT || null,
               healthcheck_path: process.env.HEALTHCHECK_PATH || null,
+              env: Object.keys(envVars).length > 0 ? envVars : null,
             };
             const { data: deployment } = await github.rest.repos.createDeployment({
               owner: context.repo.owner,

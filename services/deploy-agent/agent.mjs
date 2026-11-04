@@ -123,22 +123,42 @@ async function executeStandardDeployment(job) {
     '--log-opt', 'max-file=3',
   ];
 
+  const commonEnv = process.env.COMMON_ENV_FILE || '/etc/zq-deploy/secrets/common.env';
+  try {
+    await fs.access(commonEnv);
+    args.push('--env-file', commonEnv);
+  } catch {}
+
   const secretEnv = `/etc/zq-deploy/secrets/${service}.env`;
   try {
     await fs.access(secretEnv);
     args.push('--env-file', secretEnv);
   } catch {}
 
+  args.push('--env', `OSS_PROJECT=${service.replace(/_/g, '-')}`);
+
+  if (job.env && typeof job.env === 'object' && !Array.isArray(job.env)) {
+    for (const [key, value] of Object.entries(job.env)) {
+      if (key && typeof value === 'string') {
+        args.push('--env', `${key}=${value}`);
+      }
+    }
+  }
+
   if (job.domain) {
     const domains = job.domain.split(',').map(d => d.trim()).filter(Boolean);
     const domainRule = domains.map(d => `Host(\`${d}\`)`).join(' || ');
     const port = String(job.port || 80);
+    const routerName = service.replace(/_/g, '-');
+    const certResolver = process.env.DEFAULT_CERT_RESOLVER || 'ziqiang-ali';
     args.push(
       '--label', 'traefik.enable=true',
       '--label', 'traefik.docker.network=traefik',
-      '--label', `traefik.http.routers.${service}.rule=${domainRule}`,
-      '--label', `traefik.http.routers.${service}.entrypoints=websecure`,
-      '--label', `traefik.http.services.${service}.loadbalancer.server.port=${port}`
+      '--label', `traefik.http.routers.${routerName}.rule=${domainRule}`,
+      '--label', `traefik.http.routers.${routerName}.entrypoints=websecure`,
+      '--label', `traefik.http.routers.${routerName}.tls=true`,
+      '--label', `traefik.http.routers.${routerName}.tls.certresolver=${certResolver}`,
+      '--label', `traefik.http.services.${routerName}.loadbalancer.server.port=${port}`
     );
   }
 
