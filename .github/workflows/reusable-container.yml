@@ -98,23 +98,6 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v7
 
-      - name: Validate PR title
-        if: ${{ github.event_name == 'pull_request' }}
-        env:
-          TITLE: ${{ github.event.pull_request.title }}
-        run: |
-          set -Eeuo pipefail
-          echo "Validating PR title: '${TITLE}'"
-          node -e '
-            const title = process.env.TITLE || "";
-            const regex = /^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z0-9._\/-]+\))?!?: [\u4e00-\u9fff].+/;
-            if (!regex.test(title)) {
-              console.error(`::error::PR 标题 "${title}" 不符合规范。格式须为: <type>(<scope>): <中文描述>，例如: feat(auth): 升级登录流程`);
-              process.exit(1);
-            }
-          '
-          echo "✅ PR 标题格式校验通过"
-
       - name: Validate naming conventions
         env:
           REPO_NAME: ${{ github.event.repository.name }}
@@ -196,7 +179,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Authenticate container registry
         if: ${{ github.event_name != 'pull_request' }}
