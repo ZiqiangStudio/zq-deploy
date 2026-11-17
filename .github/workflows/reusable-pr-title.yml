@@ -10,7 +10,7 @@ jobs:
   validate:
     if: ${{ github.event_name == 'pull_request' }}
     name: Validate pull request title and body
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, zq-deploy]
     steps:
       - name: Validate title and body format
         env:

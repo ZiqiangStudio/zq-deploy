@@ -93,7 +93,7 @@ permissions:
 jobs:
   validate:
     name: Validate project and deployment contracts
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, zq-deploy]
     steps:
       - name: Check out source
         uses: actions/checkout@v7
@@ -169,7 +169,7 @@ jobs:
     needs: validate
     if: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
     name: Build and publish images
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, zq-deploy]
     timeout-minutes: 30
     outputs:
       image-refs: ${{ steps.build.outputs.image-refs }}
@@ -180,6 +180,8 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
+        with:
+          driver: docker
 
       - name: Authenticate container registry
         if: ${{ github.event_name != 'pull_request' }}
@@ -213,6 +215,14 @@ jobs:
           fi
           refs='{}'
           first_digest=''
+          proxy_args=(
+            --build-arg "HTTP_PROXY=${HTTP_PROXY:-}"
+            --build-arg "HTTPS_PROXY=${HTTPS_PROXY:-}"
+            --build-arg "NO_PROXY=${NO_PROXY:-}"
+            --build-arg "http_proxy=${HTTP_PROXY:-}"
+            --build-arg "https_proxy=${HTTPS_PROXY:-}"
+            --build-arg "no_proxy=${NO_PROXY:-}"
+          )
 
           while IFS= read -r item; do
             name=$(jq -er '.name' <<<"${item}")
@@ -248,6 +258,7 @@ jobs:
             fi
 
             docker buildx build \
+              --network=host \
               --file "${dockerfile}" \
               --tag "${image}:${name}-${GITHUB_SHA}" \
               --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
@@ -256,6 +267,7 @@ jobs:
               "${output_args[@]}" \
               --cache-from type=gha \
               --cache-to type=gha,mode=max \
+              "${proxy_args[@]}" \
               "${context}"
 
             if [[ "${PUSH_IMAGES}" == 'true' ]]; then

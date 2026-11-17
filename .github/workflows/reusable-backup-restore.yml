@@ -19,10 +19,6 @@ on:
         description: Repository-local backup adapter.
         type: string
         default: .platform/backup.sh
-      runner:
-        description: Hosted or self-hosted runner label.
-        type: string
-        default: ubuntu-24.04
 
 permissions:
   contents: read
@@ -30,7 +26,7 @@ permissions:
 jobs:
   backup-restore:
     name: ${{ inputs.operation }} ${{ inputs.service-id }}
-    runs-on: ${{ inputs.runner }}
+    runs-on: [self-hosted, linux, x64, zq-deploy]
     environment: ${{ inputs.environment }}
     concurrency:
       group: zq-platform-backup-${{ inputs.service-id }}-${{ inputs.environment }}
