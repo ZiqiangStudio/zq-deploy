@@ -85,6 +85,8 @@ DEPLOYMENT_ID
 
 ## 业务仓库接入
 
+所有复用 workflow 统一使用组织级 runner 标签 `zq-deploy`；业务仓库无需注册或配置 runner。
+
 业务仓库只保留一个薄 workflow：
 
 ```yaml

@@ -93,7 +93,7 @@ permissions:
 jobs:
   validate:
     name: Validate project and deployment contracts
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, zq-deploy]
     steps:
       - name: Check out source
         uses: actions/checkout@v7
@@ -169,7 +169,7 @@ jobs:
     needs: validate
     if: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
     name: Build and publish images
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, zq-deploy]
     timeout-minutes: 30
     outputs:
       image-refs: ${{ steps.build.outputs.image-refs }}

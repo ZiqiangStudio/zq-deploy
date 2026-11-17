@@ -44,7 +44,7 @@ jobs:
   request:
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     name: Request deployment
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, zq-deploy]
     environment: ${{ inputs.environment }}
     concurrency:
       group: zq-platform-deploy-${{ github.repository }}-${{ inputs.environment }}
