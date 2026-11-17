@@ -7,20 +7,15 @@ on:
 
 permissions:
   contents: read
-  packages: write
   deployments: write
-  id-token: write
 
 jobs:
   deploy:
     uses: ZiqiangStudio/zq-deploy/.github/workflows/reusable-container.yml@main
+    secrets: inherit
     with:
-      registry: ghcr.io
-      registry-namespace: ziqiangstudio
-      registry-provider: github
       images: >-
         [{"name":"default","image":"example-service"}]
       deploy: true
       environment: production
       validate-script: .platform/validate.sh
-    secrets: inherit

@@ -1,93 +1,44 @@
 # zq-deploy
 
-自强 Studio 的组织级部署系统。业务仓库负责测试和构建不可变镜像；中央控制面负责把 GitHub Deployment 分发给当前服务器代理；代理在服务器本地执行容器编排、健康检查和回滚。
+自强 Studio 组织级镜像构建与自动部署。业务仓库只保留一份薄 workflow，所有构建和部署都在组织自托管 runner 上完成，服务器使用固定的 compose 清单上线。
 
 ## 目录
 
-- `.github/workflows/reusable-container.yml`：统一构建镜像并请求中央部署。
-- `.github/workflows/reusable-deploy.yml`：创建标准 GitHub Deployment，载荷只包含环境和镜像 digest。
-- `services/deployment-control/`：唯一中央控制面，接收 GitHub App Webhook、排队任务、更新 Deployment 和 Project。
-- `services/deploy-agent/`：服务器代理，主动拉取任务并运行服务器上的部署清单。
-- `contracts/deployment.schema.yml`：部署载荷和状态契约。
-- `templates/compose/compose.yml`：Compose 运行基线。
-- `backup/`：备份和恢复契约。
-- `adapters/registry/`：注册表提供商适配器；云厂商 API 只允许出现在这里。
-- `docs/registry-providers.md`：注册表认证和换云契约。
+- `.github/workflows/reusable-container.yml`：构建并推送镜像，按需调用部署。
+- `.github/workflows/reusable-deploy.yml`：在 self-hosted runner 上直接执行服务器 compose 清单。
+- `.github/workflows/reusable-pr-title.yml`：组织统一的 PR 标题与正文校验。
+- `.github/workflows/reusable-backup-restore.yml`：备份与恢复检查。
+- `contracts/deployment.schema.yml`：GitHub Deployment 载荷约定。
+- `templates/compose/compose.yml`：服务器 compose 清单模板。
+- `backup/`：备份策略与恢复说明。
 - `examples/`：业务仓库最小调用示例。
 
 ## 部署链路
 
 ```text
-业务仓库 main
+业务仓库 push main
   -> reusable-container
-  -> 构建并推送带 digest 的镜像
-  -> reusable-deploy 创建 GitHub Deployment(environment + image_refs)
-  -> deployment-control 根据环境映射排队
-  -> 当前目标服务器上的 deploy-agent 拉取任务
-  -> 服务器部署清单执行 Compose、健康检查、回滚
-  -> control 更新 Deployment Status
-  -> 同一 control 把状态同步到组织 Project
+  -> 在组织 runner 上构建并推送不可变镜像 digest
+  -> reusable-deploy
+  -> 同一个 runner 执行 /etc/zq-deploy/deployments/<service>/compose.yml
+  -> docker compose pull
+  -> docker compose up -d --remove-orphans --wait
+  -> 写入 GitHub Deployment 状态
 ```
 
-业务仓库不保存服务器地址、SSH 私钥、代理令牌或部署脚本。服务器地址变化只影响控制面的环境映射和服务器代理安装，不影响任何业务仓库。
+业务仓库不需要保存服务器地址、SSH 私钥或部署脚本；服务器上也不需要控制面、代理或 `deploy.sh`。
 
-## 中央控制面
+## Runner
 
-`services/deployment-control` 使用一个 GitHub App Webhook，同时处理 `deployment` 和 `deployment_status` 事件。GitHub App 需要：
-
-- Deployments：读写；
-- Organization Projects：读写；
-- Metadata：只读；
-- Webhook Events：订阅 `deployment`、`deployment_status`。
-
-运行变量：
+所有 reusable workflow 使用组织级 runner 标签：
 
 ```text
-GITHUB_APP_ID
-GITHUB_APP_PRIVATE_KEY_B64
-GITHUB_WEBHOOK_SECRET
-GITHUB_INSTALLATION_ID
-PROJECT_OWNER=ZiqiangStudio
-PROJECT_NUMBER=6
-DEPLOY_TARGETS_JSON={"production":"zq1"}
-AGENT_TOKENS_JSON={"zq1":"long-random-token"}
-STATE_FILE=/data/deployment-state.json
-AGENT_LEASE_SECONDS=900
-PORT=8080
+[self-hosted, linux, x64, zq-deploy]
 ```
 
-`DEPLOY_TARGETS_JSON` 是唯一的环境路由表。`production` 指向哪个代理由它决定；服务器更换时，在新服务器安装代理、使用新的令牌或接管同一个逻辑目标，再更新这张表即可。控制面数据必须放在持久卷中。
-
-控制面可直接使用 `services/deployment-control/compose.yml` 运行。Webhook 地址为 `/github/webhook`，探活地址为 `/healthz`。
-
-## 服务器代理
-
-`services/deploy-agent` 在每台服务器运行，主动轮询控制面，不接受公网入站连接。代理使用服务器本地配置的注册表凭据拉取不可变镜像，凭据不进入 GitHub Deployment 或业务仓库。注册表提供商由 workflow 配置选择，云厂商 API 只存在于 `adapters/registry/`；部署控制面不依赖具体云。代理需要：
-
-```text
-DEPLOYER_URL=https://deploy.ziqiang.net.cn
-DEPLOY_AGENT_ID=zq1
-DEPLOY_AGENT_TOKEN=<与控制面配置一致的令牌>
-DEPLOY_MANIFEST_DIR=/deployments
-DEPLOY_INTERVAL_MS=5000
-```
-
-代理通过 Docker socket 执行部署清单 `/deployments/<service>/deploy.sh`。清单接收：
-
-```text
-DEPLOY_ENVIRONMENT
-IMAGE_REFS       # 逻辑镜像名到完整 registry/image@sha256:digest 的 JSON
-GITHUB_SHA
-DEPLOYMENT_ID
-```
-
-清单必须幂等，完成 `docker compose pull/up`、健康检查和失败回滚；失败时返回非零状态。代理镜像和 Compose 见 `services/deploy-agent/`。
+runner 已注册在组织的 runner group 中，业务仓库只需要允许访问该 runner group，不需要为每个仓库安装或配置 runner。runner 用户需要能访问 Docker socket，并能读取 `/etc/zq-deploy/deployments/<service>/` 下的 compose 清单和 `.env`。
 
 ## 业务仓库接入
-
-所有复用 workflow 统一使用组织级 runner 标签 `zq-deploy`；业务仓库无需注册或配置 runner。
-
-业务仓库只保留一个薄 workflow：
 
 ```yaml
 name: Deploy
@@ -99,35 +50,66 @@ on:
 
 permissions:
   contents: read
-  packages: write
   deployments: write
 
 jobs:
   deploy:
     uses: ZiqiangStudio/zq-deploy/.github/workflows/reusable-container.yml@main
+    secrets: inherit
     with:
       images: >-
-        [{"name":"default","image":"example-service"}]
+        [{"name":"backend","image":"example-backend","context":"backend","dockerfile":"backend/Dockerfile"}]
       deploy: true
       environment: production
       validate-script: .platform/validate.sh
-    secrets: inherit
 ```
 
-`images` 中构建出的每个镜像都会转换成不可变 digest 引用。固定依赖镜像也必须写 digest：
+镜像定义支持：
 
-```json
-{"name":"redis","build":false,"image":"redis","digest":"sha256:...","registry":"main"}
+- `name`：逻辑镜像名，部署时导出为 `<NAME>_IMAGE_REF`；`default` 导出为 `IMAGE_REF`。
+- `image`：registry 中的镜像仓库名。
+- `build`：默认 `true`；`false` 表示引用固定 digest 的依赖镜像。
+- `digest`：`build: false` 时必填，格式 `sha256:<64位十六进制>`。
+- `context` / `dockerfile`：构建上下文和 Dockerfile 路径。
+
+镜像会推送到 `registry.cn-hangzhou.aliyuncs.com/ziqiang_studio`，使用组织或仓库 Secrets 中的 `DOCKER_USERNAME` 和 `DOCKER_PASSWORD`。PR 只构建和校验，不登录 registry、不推送、不部署。
+
+## 服务器清单
+
+每个服务在服务器上只需要一个目录：
+
+```text
+/etc/zq-deploy/deployments/<service>/
+  compose.yml
+  .env
 ```
 
-容器项目不再配置 `DEPLOY_HOST`、`DEPLOY_USER`、`DEPLOY_SSH_PRIVATE_KEY`、`DEPLOY_KNOWN_HOSTS`，也不再提供 `.platform/deploy.sh`。容器部署逻辑统一放在服务器的服务清单中，仓库只保留构建和验证所需文件。
+`<service>` 等于 GitHub 仓库名。`compose.yml` 必须设置 `name: <service>`，并使用不可变镜像变量：
 
-## 服务器迁移
+```yaml
+name: example-service
 
-1. 在新服务器安装 Docker、Traefik 和 `deploy-agent`。
-2. 放入该服务器负责的服务清单、生产环境文件和注册表凭据。
-3. 为代理生成令牌，写入控制面 `AGENT_TOKENS_JSON`；把环境映射切换到新代理。
-4. 先让代理通过 `/healthz` 和轮询接口，再合并业务仓库的部署 PR。
-5. 旧服务器停止代理。业务仓库 workflow、镜像仓库和 GitHub Environment 不变。
+services:
+  app:
+    image: ${IMAGE_REF:?IMAGE_REF is required}
+    restart: unless-stopped
+    env_file: ./.env
+    networks: [app-net, traefik]
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: traefik
+      traefik.http.routers.example.rule: Host(`example.ziqiang.net.cn`)
+      traefik.http.routers.example.entrypoints: websecure
+      traefik.http.routers.example.tls: true
+      traefik.http.routers.example.tls.certresolver: ziqiang-ali
+      traefik.http.services.example.loadbalancer.server.port: "8000"
 
-不迁移数据库、Volume 或业务容器；这些属于服务器清单和备份恢复流程的独立变更。
+networks:
+  app-net:
+  traefik:
+    external: true
+```
+
+多镜像服务按 `name` 使用对应变量，例如 `backend` 和 `frontend` 对应 `${BACKEND_IMAGE_REF}` 和 `${FRONTEND_IMAGE_REF}`。域名、端口、健康检查和 `restart: unless-stopped` 都写在这份 compose 清单里。
+
+模板见 `templates/compose/compose.yml`，可直接复制后替换服务名、域名和端口。

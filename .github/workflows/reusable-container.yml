@@ -3,10 +3,6 @@ name: Reusable container build and deployment
 on:
   workflow_call:
     secrets:
-      registry_username:
-        required: false
-      registry_password:
-        required: false
       DOCKER_USERNAME:
         required: false
       DOCKER_PASSWORD:
@@ -17,78 +13,33 @@ on:
         type: string
         default: ''
       registry:
-        description: Central container registry hostname.
+        description: Container registry hostname.
         type: string
         default: registry.cn-hangzhou.aliyuncs.com
-      registry-provider:
-        description: Registry authentication adapter.
-        type: string
-        default: static
-      registry-region:
-        description: Provider-specific registry region.
-        type: string
-        default: ''
-      registry-instance-id:
-        description: Provider-specific registry instance identifier.
-        type: string
-        default: ''
-      registry-oidc-provider-arn:
-        description: Provider-specific OIDC provider ARN.
-        type: string
-        default: ''
-      registry-role-arn:
-        description: Provider-specific role ARN.
-        type: string
-        default: ''
-      registry-audience:
-        description: Provider-specific OIDC audience.
-        type: string
-        default: ''
       registry-namespace:
-        description: Central container registry namespace.
+        description: Container registry namespace.
         type: string
         default: ziqiang_studio
-      internal-registry:
-        description: Central internal registry hostname for dependency images.
-        type: string
-        default: ''
       deploy:
-        description: Create a GitHub Deployment for the central control plane after publishing images.
+        description: Deploy the compose stack after publishing images.
         type: boolean
         default: true
       environment:
-        description: GitHub Environment and logical deployment target.
+        description: GitHub Environment and deployment target.
         type: string
         default: production
       validate-script:
         description: Project-local deployment contract validation script.
         type: string
         default: ""
-      domain:
-        description: Public domain(s) for Traefik routing (comma-separated).
-        type: string
-        default: ''
-      port:
-        description: Application port for the Traefik load balancer.
-        type: string
-        default: ''
-      healthcheck-path:
-        description: Container healthcheck HTTP path.
-        type: string
-        default: ''
     outputs:
       image-refs:
         description: JSON object mapping image names to immutable refs.
         value: ${{ jobs.image.outputs.image-refs }}
-      image-digest:
-        description: Digest of the first built image.
-        value: ${{ jobs.image.outputs.image-digest }}
 
 permissions:
   contents: read
-  packages: write
   deployments: write
-  id-token: write
 
 jobs:
   validate:
@@ -173,7 +124,6 @@ jobs:
     timeout-minutes: 30
     outputs:
       image-refs: ${{ steps.build.outputs.image-refs }}
-      image-digest: ${{ steps.build.outputs.image-digest }}
     steps:
       - name: Check out source
         uses: actions/checkout@v7
@@ -185,17 +135,15 @@ jobs:
 
       - name: Authenticate container registry
         if: ${{ github.event_name != 'pull_request' }}
-        uses: ZiqiangStudio/zq-deploy/.github/actions/registry-login@main
-        with:
-          provider: ${{ inputs.registry-provider }}
-          registry: ${{ inputs.registry }}
-          username: ${{ secrets.registry_username || secrets.DOCKER_USERNAME || secrets.REGISTRY_USERNAME }}
-          password: ${{ secrets.registry_password || secrets.DOCKER_PASSWORD || secrets.REGISTRY_PASSWORD }}
-          oidc-provider-arn: ${{ inputs.registry-oidc-provider-arn }}
-          role-arn: ${{ inputs.registry-role-arn }}
-          region-id: ${{ inputs.registry-region }}
-          instance-id: ${{ inputs.registry-instance-id }}
-          audience: ${{ inputs.registry-audience }}
+        shell: bash
+        env:
+          REGISTRY: ${{ inputs.registry }}
+          REGISTRY_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          REGISTRY_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          [[ -n "${REGISTRY_USERNAME}" && -n "${REGISTRY_PASSWORD}" ]] || { echo 'DOCKER_USERNAME and DOCKER_PASSWORD are required' >&2; exit 1; }
+          printf '%s' "${REGISTRY_PASSWORD}" | docker login "${REGISTRY}" --username "${REGISTRY_USERNAME}" --password-stdin
 
       - name: Build and publish images
         id: build
@@ -205,7 +153,6 @@ jobs:
           PUSH_IMAGES: ${{ github.event_name != 'pull_request' }}
           REGISTRY_HOST: ${{ inputs.registry }}
           REGISTRY_NAMESPACE: ${{ inputs.registry-namespace }}
-          INTERNAL_REGISTRY_HOST: ${{ inputs.internal-registry }}
         run: |
           set -Eeuo pipefail
           command -v jq >/dev/null
@@ -214,7 +161,6 @@ jobs:
             definitions="[{\"name\":\"default\",\"image\":\"${DEFAULT_IMAGE}\"}]"
           fi
           refs='{}'
-          first_digest=''
           proxy_args=(
             --build-arg "HTTP_PROXY=${HTTP_PROXY:-}"
             --build-arg "HTTPS_PROXY=${HTTPS_PROXY:-}"
@@ -230,15 +176,7 @@ jobs:
             if [[ "${build}" == 'false' ]]; then
               image=$(jq -er '.image' <<<"${item}")
               digest=$(jq -er '.digest | select(test("^sha256:"))' <<<"${item}")
-              registry_kind=$(jq -r '.registry // "main"' <<<"${item}")
-              case "${registry_kind}" in
-                main) dependency_registry="${REGISTRY_HOST}" ;;
-                internal)
-                  [[ -n "${INTERNAL_REGISTRY_HOST}" ]] || { echo 'internal-registry is required for internal dependencies' >&2; exit 1; }
-                  dependency_registry="${INTERNAL_REGISTRY_HOST}" ;;
-                *) echo "unsupported dependency registry: ${registry_kind}" >&2; exit 1 ;;
-              esac
-              ref="${dependency_registry}/${REGISTRY_NAMESPACE}/${image}@${digest}"
+              ref="${REGISTRY_HOST}/${REGISTRY_NAMESPACE}/${image}@${digest}"
               refs=$(jq -c --arg name "${name}" --arg ref "${ref}" '. + {($name): $ref}' <<<"${refs}")
               continue
             fi
@@ -273,7 +211,6 @@ jobs:
             if [[ "${PUSH_IMAGES}" == 'true' ]]; then
               digest=$(jq -er '.["containerimage.digest"]' "${metadata}")
               ref="${image}@${digest}"
-              [[ -n "${first_digest}" ]] || first_digest="${digest}"
             else
               ref="${image}:${name}-${GITHUB_SHA}"
             fi
@@ -282,7 +219,6 @@ jobs:
           done < <(jq -cer 'if type == "array" and length > 0 then .[] else error("images must be a non-empty array") end' <<<"${definitions}")
 
           echo "image-refs=${refs}" >>"${GITHUB_OUTPUT}"
-          echo "image-digest=${first_digest}" >>"${GITHUB_OUTPUT}"
 
       - name: Validate deployment contract
         if: ${{ github.event_name == 'pull_request' && inputs.validate-script != '' }}
@@ -294,13 +230,11 @@ jobs:
     if: ${{ inputs.deploy && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     needs: image
     uses: ./.github/workflows/reusable-deploy.yml
+    secrets: inherit
     with:
       environment: ${{ inputs.environment }}
       image-refs: ${{ needs.image.outputs.image-refs }}
-      image-digest: ${{ needs.image.outputs.image-digest }}
-      domain: ${{ inputs.domain }}
-      port: ${{ inputs.port }}
-      healthcheck-path: ${{ inputs.healthcheck-path }}
+      registry: ${{ inputs.registry }}
     permissions:
       contents: read
       deployments: write

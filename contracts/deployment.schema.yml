@@ -1,19 +1,18 @@
 schema: zq-platform/deployment/v1
 payload:
-  environment: GitHub Environment name; the control plane resolves it to an active agent.
-  service: GitHub repository service name.
+  service: GitHub repository name; also the server compose directory name.
   repository: Full GitHub repository name.
-  sha: Source commit associated with the image.
+  sha: Source commit associated with the images.
   image_refs: Object of logical image names to immutable registry references ending in @sha256:digest.
-  env: Optional key-value object of non-sensitive environment variables from GitHub Actions variables.
-resolution:
-  environment: maps to one active agent in the control plane's DEPLOY_TARGETS_JSON.
-  agent: runs the repository's server-side deployment manifest for the service.
+deployment:
+  runner: Organization runner with labels [self-hosted, linux, x64, zq-deploy].
+  manifest: /etc/zq-deploy/deployments/<service>/compose.yml
+  command: docker compose pull, then docker compose up -d --remove-orphans --wait.
 status:
-  accepted: control plane creates in_progress deployment status.
-  success: agent completed the deployment adapter and health check.
-  failure: agent adapter failed; the adapter must perform rollback before returning non-zero.
+  in_progress: Created before the compose rollout starts.
+  success: docker compose up --wait completed and all services are healthy.
+  failure: The compose rollout failed or was cancelled.
 security:
-  - Project workflows never send hostnames, SSH keys, or server credentials.
-  - Agent tokens and deployment manifests stay on the server or control-plane host.
-  - The control plane accepts only immutable image references.
+  - Business workflows never receive server hostnames, SSH keys, or server credentials.
+  - Registry credentials come from DOCKER_USERNAME and DOCKER_PASSWORD secrets.
+  - Only immutable image references are deployed.
