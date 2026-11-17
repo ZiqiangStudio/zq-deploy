@@ -128,8 +128,20 @@ jobs:
           manifest="${directory}/compose.yml"
           test -f "${manifest}" || { echo "missing deployment manifest: ${manifest}" >&2; exit 1; }
           docker compose --project-directory "${directory}" --file "${manifest}" pull
-          docker compose --project-directory "${directory}" --file "${manifest}" up -d --remove-orphans --wait --wait-timeout 180
-          docker compose --project-directory "${directory}" --file "${manifest}" ps
+          docker compose --project-directory "${directory}" --file "${manifest}" up -d --remove-orphans
+
+          for attempt in $(seq 1 60); do
+            if docker compose --project-directory "${directory}" --file "${manifest}" ps --all --format json \
+              | jq -s -e '(if length == 1 and (.[0] | type == "array") then .[0] else . end) | length > 0 and all(.[]; .State == "running" and ((.Health // "") == "" or .Health == "healthy"))' >/dev/null; then
+              docker compose --project-directory "${directory}" --file "${manifest}" ps
+              exit 0
+            fi
+            sleep 5
+          done
+
+          echo "compose stack did not become healthy within 300 seconds" >&2
+          docker compose --project-directory "${directory}" --file "${manifest}" ps -a >&2
+          exit 1
 
       - name: Mark deployment successful
         if: ${{ success() && steps.deployment.outputs.id != '' }}
