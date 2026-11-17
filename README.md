@@ -39,6 +39,8 @@
 
 runner 已注册在组织的 runner group 中，业务仓库只需要允许访问该 runner group，不需要为每个仓库安装或配置 runner。runner 用户需要能访问 Docker socket，并能读取 `/etc/zq-deploy/deployments/<service>/` 下的 compose 清单和 `.env`。
 
+runner 主机预装 Docker Engine、Docker Compose v2、Git、jq、curl，以及 Python 项目常用的 `build-essential`、`pkg-config`、`default-libmysqlclient-dev`、`libpq-dev`。Node、Python 等语言版本由 workflow 的 setup action 安装。
+
 ## 业务仓库接入
 
 ```yaml
