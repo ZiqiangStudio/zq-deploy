@@ -116,3 +116,5 @@ networks:
 多镜像服务按 `name` 使用对应变量，例如 `backend` 和 `frontend` 对应 `${BACKEND_IMAGE_REF}` 和 `${FRONTEND_IMAGE_REF}`。域名、端口、健康检查和 `restart: unless-stopped` 都写在这份 compose 清单里。
 
 模板见 `templates/compose/compose.yml`，可直接复制后替换服务名、域名和端口。
+
+从旧的独立 compose 项目迁移时，先停掉旧项目并保留数据目录，再触发首次部署。新清单沿用原 `container_name` 时，Docker 会因同名容器拒绝启动。
