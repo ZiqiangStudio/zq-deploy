@@ -258,6 +258,7 @@ jobs:
             fi
 
             docker buildx build \
+              --network=host \
               --file "${dockerfile}" \
               --tag "${image}:${name}-${GITHUB_SHA}" \
               --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
