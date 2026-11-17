@@ -7,11 +7,11 @@ payload:
 deployment:
   runner: Organization runner with labels [self-hosted, linux, x64, zq-deploy].
   manifest: /etc/zq-deploy/deployments/<service>/compose.yml
-  command: docker compose pull, then docker compose up -d --remove-orphans --wait.
+  command: docker compose pull, then docker compose up -d --remove-orphans, then poll docker compose ps until every service is running and healthy (300 second timeout).
 status:
   in_progress: Created before the compose rollout starts.
-  success: docker compose up --wait completed and all services are healthy.
-  failure: The compose rollout failed or was cancelled.
+  success: All compose services are running and every configured healthcheck reports healthy.
+  failure: The compose rollout failed, a service stayed unhealthy for 300 seconds, or the deployment was cancelled.
 security:
   - Business workflows never receive server hostnames, SSH keys, or server credentials.
   - Registry credentials come from DOCKER_USERNAME and DOCKER_PASSWORD secrets.

@@ -22,7 +22,8 @@
   -> reusable-deploy
   -> 同一个 runner 执行 /etc/zq-deploy/deployments/<service>/compose.yml
   -> docker compose pull
-  -> docker compose up -d --remove-orphans --wait
+  -> docker compose up -d --remove-orphans
+  -> 轮询 docker compose ps，等待全部服务 running / healthy（最多 300 秒）
   -> 写入 GitHub Deployment 状态
 ```
 
