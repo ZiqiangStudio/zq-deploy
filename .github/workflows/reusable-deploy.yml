@@ -1,120 +1,170 @@
-name: Request central deployment
+name: Deploy on self-hosted runner
 
 on:
   workflow_call:
+    secrets:
+      DOCKER_USERNAME:
+        required: false
+      DOCKER_PASSWORD:
+        required: false
     inputs:
       environment:
-        description: GitHub Environment and logical deployment target.
+        description: GitHub Environment and deployment target.
         type: string
         default: production
       image-refs:
         description: JSON object of logical image names to immutable digest references.
         type: string
         required: true
-      image-digest:
-        description: Primary image digest used by Project synchronization.
+      registry:
+        description: Container registry hostname.
         type: string
-        required: false
-      domain:
-        description: Public domain(s) for Traefik routing.
+        default: registry.cn-hangzhou.aliyuncs.com
+      manifest-root:
+        description: Directory containing <service>/compose.yml on the runner.
         type: string
-        required: false
-        default: ''
-      port:
-        description: Application port for Traefik routing.
-        type: string
-        required: false
-        default: ''
-      healthcheck-path:
-        description: Container healthcheck HTTP path.
-        type: string
-        required: false
-        default: ''
-      env-json:
-        description: Optional JSON string of environment key-value pairs (e.g. from vars).
-        type: string
-        required: false
-        default: '{}'
+        default: /etc/zq-deploy/deployments
 
 permissions:
   contents: read
   deployments: write
 
 jobs:
-  request:
+  deploy:
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-    name: Request deployment
+    name: Deploy
     runs-on: [self-hosted, linux, x64, zq-deploy]
     environment: ${{ inputs.environment }}
     concurrency:
-      group: zq-platform-deploy-${{ github.repository }}-${{ inputs.environment }}
+      group: zq-deploy-${{ github.repository }}-${{ inputs.environment }}
       cancel-in-progress: false
     steps:
-      - name: Create GitHub Deployment
+      - name: Validate image references
+        shell: bash
+        env:
+          IMAGE_REFS: ${{ inputs.image-refs }}
+        run: |
+          set -euo pipefail
+          command -v jq >/dev/null
+          jq -e '
+            type == "object" and length > 0 and
+            all(to_entries[]; (.key | test("^[a-zA-Z0-9._-]+$")) and (.value | test("^.+@sha256:[0-9a-f]{64}$")))
+          ' <<<"${IMAGE_REFS}" >/dev/null
+
+      - name: Log in to registry
+        shell: bash
+        env:
+          REGISTRY: ${{ inputs.registry }}
+          REGISTRY_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          REGISTRY_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+        run: |
+          set -euo pipefail
+          [[ -n "${REGISTRY_USERNAME}" && -n "${REGISTRY_PASSWORD}" ]] || { echo 'DOCKER_USERNAME and DOCKER_PASSWORD are required' >&2; exit 1; }
+          printf '%s' "${REGISTRY_PASSWORD}" | docker login "${REGISTRY}" --username "${REGISTRY_USERNAME}" --password-stdin
+
+      - name: Create deployment
+        id: deployment
         uses: actions/github-script@v9
         env:
           DEPLOYMENT_ENVIRONMENT: ${{ inputs.environment }}
           IMAGE_REFS: ${{ inputs.image-refs }}
-          IMAGE_DIGEST: ${{ inputs.image-digest }}
-          DOMAIN: ${{ inputs.domain }}
-          PORT: ${{ inputs.port }}
-          HEALTHCHECK_PATH: ${{ inputs.healthcheck-path }}
-          ENV_JSON: ${{ inputs.env-json }}
-          VARS_JSON: ${{ toJson(vars) }}
         with:
           github-token: ${{ github.token }}
           script: |
             const imageRefs = JSON.parse(process.env.IMAGE_REFS);
-            const validDigest = value => typeof value === 'string' && /@sha256:[0-9a-f]{64}$/.test(value);
-            if (!imageRefs || typeof imageRefs !== 'object' || Array.isArray(imageRefs) || Object.keys(imageRefs).length === 0) {
-              throw new Error('image-refs must be a non-empty object');
-            }
-            for (const [name, ref] of Object.entries(imageRefs)) {
-              if (!/^[a-zA-Z0-9._-]+$/.test(name) || !validDigest(ref)) {
-                throw new Error(`image-refs.${name} must be an immutable image reference`);
-              }
-            }
-            let envVars = {};
-            if (process.env.VARS_JSON && process.env.VARS_JSON.trim()) {
-              try {
-                const parsedVars = JSON.parse(process.env.VARS_JSON);
-                if (parsedVars && typeof parsedVars === 'object' && !Array.isArray(parsedVars)) {
-                  envVars = { ...parsedVars };
-                }
-              } catch {}
-            }
-
-            if (process.env.ENV_JSON && process.env.ENV_JSON.trim()) {
-              try {
-                const parsedEnv = JSON.parse(process.env.ENV_JSON);
-                if (parsedEnv && typeof parsedEnv === 'object' && !Array.isArray(parsedEnv)) {
-                  envVars = { ...envVars, ...parsedEnv };
-                }
-              } catch (e) {
-                throw new Error('env-json must be a valid JSON object string');
-              }
-            }
-
             const payload = {
               schema: 'zq-platform/deployment/v1',
               service: context.repo.repo,
               repository: context.repo.owner + '/' + context.repo.repo,
               sha: context.sha,
               image_refs: imageRefs,
-              image_digest: process.env.IMAGE_DIGEST || null,
-              domain: process.env.DOMAIN || null,
-              port: process.env.PORT || null,
-              healthcheck_path: process.env.HEALTHCHECK_PATH || null,
-              env: Object.keys(envVars).length > 0 ? envVars : null,
             };
             const { data: deployment } = await github.rest.repos.createDeployment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               ref: context.sha,
               environment: process.env.DEPLOYMENT_ENVIRONMENT,
-              description: `请求部署：${process.env.DEPLOYMENT_ENVIRONMENT}`,
+              description: `Deploy ${process.env.DEPLOYMENT_ENVIRONMENT}`,
               payload: JSON.stringify(payload),
               auto_merge: false,
               required_contexts: [],
             });
-            core.info(`Created deployment ${deployment.id}; the central control plane will dispatch it to the active agent.`);
+            await github.rest.repos.createDeploymentStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              deployment_id: deployment.id,
+              state: 'in_progress',
+              environment: process.env.DEPLOYMENT_ENVIRONMENT,
+              description: 'Deploying',
+              auto_inactive: false,
+            });
+            core.setOutput('id', deployment.id);
+
+      - name: Export image references
+        shell: bash
+        env:
+          IMAGE_REFS: ${{ inputs.image-refs }}
+        run: |
+          set -euo pipefail
+          while IFS=$'\t' read -r name ref; do
+            if [[ "${name}" == 'default' ]]; then
+              key=IMAGE_REF
+            else
+              key="$(printf '%s' "${name}" | tr '[:lower:].-' '[:upper:]__')_IMAGE_REF"
+            fi
+            printf '%s=%s\n' "${key}" "${ref}" >>"${GITHUB_ENV}"
+          done < <(jq -r 'to_entries[] | [.key, .value] | @tsv' <<<"${IMAGE_REFS}")
+
+      - name: Roll out compose stack
+        shell: bash
+        env:
+          SERVICE: ${{ github.event.repository.name }}
+          SERVICE_NAME: ${{ github.event.repository.name }}
+          COMPOSE_PROJECT_NAME: ${{ github.event.repository.name }}
+          MANIFEST_ROOT: ${{ inputs.manifest-root }}
+        run: |
+          set -euo pipefail
+          directory="${MANIFEST_ROOT}/${SERVICE}"
+          manifest="${directory}/compose.yml"
+          test -f "${manifest}" || { echo "missing deployment manifest: ${manifest}" >&2; exit 1; }
+          docker compose --project-directory "${directory}" --file "${manifest}" pull
+          docker compose --project-directory "${directory}" --file "${manifest}" up -d --remove-orphans --wait --wait-timeout 180
+          docker compose --project-directory "${directory}" --file "${manifest}" ps
+
+      - name: Mark deployment successful
+        if: ${{ success() && steps.deployment.outputs.id != '' }}
+        uses: actions/github-script@v9
+        env:
+          DEPLOYMENT_ID: ${{ steps.deployment.outputs.id }}
+          DEPLOYMENT_ENVIRONMENT: ${{ inputs.environment }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            await github.rest.repos.createDeploymentStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              deployment_id: Number(process.env.DEPLOYMENT_ID),
+              state: 'success',
+              environment: process.env.DEPLOYMENT_ENVIRONMENT,
+              description: 'Deployed',
+              auto_inactive: false,
+            });
+
+      - name: Mark deployment failed
+        if: ${{ (failure() || cancelled()) && steps.deployment.outputs.id != '' }}
+        uses: actions/github-script@v9
+        env:
+          DEPLOYMENT_ID: ${{ steps.deployment.outputs.id }}
+          DEPLOYMENT_ENVIRONMENT: ${{ inputs.environment }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            await github.rest.repos.createDeploymentStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              deployment_id: Number(process.env.DEPLOYMENT_ID),
+              state: 'failure',
+              environment: process.env.DEPLOYMENT_ENVIRONMENT,
+              description: 'Deployment failed',
+              auto_inactive: false,
+            });

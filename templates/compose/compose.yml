@@ -5,24 +5,23 @@ services:
     image: ${IMAGE_REF:?IMAGE_REF is required}
     restart: unless-stopped
     init: true
-    expose:
-      - "${APP_PORT:-8000}"
     env_file:
-      - ${RUNTIME_ENV_FILE:-./runtime/app.env}
+      - ${RUNTIME_ENV_FILE:-./.env}
     environment:
       TZ: ${TZ:-Asia/Shanghai}
-    tmpfs:
-      - /tmp
+    expose:
+      - "${APP_PORT:-8000}"
     networks:
-      - edge
-      - internal
+      - app-net
+      - traefik
     labels:
-      - "traefik.enable=${TRAEFIK_ENABLED:-false}"
-      - "traefik.docker.network=edge"
-      - "traefik.http.routers.${SERVICE_NAME}.rule=Host(`${PUBLIC_HOST}`)"
-      - "traefik.http.routers.${SERVICE_NAME}.entrypoints=websecure"
-      - "traefik.http.routers.${SERVICE_NAME}.tls=true"
-      - "traefik.http.services.${SERVICE_NAME}.loadbalancer.server.port=${APP_PORT:-8000}"
+      traefik.enable: "true"
+      traefik.docker.network: traefik
+      traefik.http.routers.${SERVICE_NAME}.rule: Host(`${PUBLIC_HOST}`)
+      traefik.http.routers.${SERVICE_NAME}.entrypoints: websecure
+      traefik.http.routers.${SERVICE_NAME}.tls: "true"
+      traefik.http.routers.${SERVICE_NAME}.tls.certresolver: ziqiang-ali
+      traefik.http.services.${SERVICE_NAME}.loadbalancer.server.port: "${APP_PORT:-8000}"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:${APP_PORT:-8000}${HEALTHCHECK_PATH:-/healthz} >/dev/null || exit 1"]
       interval: 30s
@@ -31,7 +30,6 @@ services:
       start_period: 30s
 
 networks:
-  edge:
+  app-net:
+  traefik:
     external: true
-  internal:
-    name: ${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME is required}_internal
