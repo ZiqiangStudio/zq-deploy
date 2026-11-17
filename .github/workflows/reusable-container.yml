@@ -215,6 +215,14 @@ jobs:
           fi
           refs='{}'
           first_digest=''
+          proxy_args=(
+            --build-arg "HTTP_PROXY=${HTTP_PROXY:-}"
+            --build-arg "HTTPS_PROXY=${HTTPS_PROXY:-}"
+            --build-arg "NO_PROXY=${NO_PROXY:-}"
+            --build-arg "http_proxy=${HTTP_PROXY:-}"
+            --build-arg "https_proxy=${HTTPS_PROXY:-}"
+            --build-arg "no_proxy=${NO_PROXY:-}"
+          )
 
           while IFS= read -r item; do
             name=$(jq -er '.name' <<<"${item}")
@@ -258,6 +266,7 @@ jobs:
               "${output_args[@]}" \
               --cache-from type=gha \
               --cache-to type=gha,mode=max \
+              "${proxy_args[@]}" \
               "${context}"
 
             if [[ "${PUSH_IMAGES}" == 'true' ]]; then
