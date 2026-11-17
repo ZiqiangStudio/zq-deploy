@@ -22,7 +22,8 @@
   -> reusable-deploy
   -> 同一个 runner 执行 /etc/zq-deploy/deployments/<service>/compose.yml
   -> docker compose pull
-  -> docker compose up -d --remove-orphans --wait
+  -> docker compose up -d --remove-orphans
+  -> 轮询 docker compose ps，等待全部服务 running / healthy（最多 300 秒）
   -> 写入 GitHub Deployment 状态
 ```
 
@@ -37,6 +38,8 @@
 ```
 
 runner 已注册在组织的 runner group 中，业务仓库只需要允许访问该 runner group，不需要为每个仓库安装或配置 runner。runner 用户需要能访问 Docker socket，并能读取 `/etc/zq-deploy/deployments/<service>/` 下的 compose 清单和 `.env`。
+
+runner 主机预装 Docker Engine、Docker Compose v2、Git、jq、curl，以及 Python 项目常用的 `build-essential`、`pkg-config`、`default-libmysqlclient-dev`、`libpq-dev`。Node、Python 等语言版本由 workflow 的 setup action 安装。
 
 ## 业务仓库接入
 
