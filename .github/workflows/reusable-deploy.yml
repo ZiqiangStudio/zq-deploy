@@ -26,10 +26,6 @@ on:
         description: Directory containing <service>/compose.yml on the runner.
         type: string
         default: /etc/zq-deploy/deployments
-      compose-file:
-        description: Repository path to the compose manifest installed on the runner.
-        type: string
-        default: .platform/compose.yml
 
 permissions:
   contents: read
@@ -111,17 +107,26 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Apply compose manifest
+      - name: Check out deployment platform
+        uses: actions/checkout@v7
+        with:
+          repository: ZiqiangStudio/zq-deploy
+          ref: main
+          path: .zq-deploy-platform
+          persist-credentials: false
+
+      - name: Render compose manifest
         shell: bash
         env:
           SERVICE: ${{ github.event.repository.name }}
           MANIFEST_ROOT: ${{ inputs.manifest-root }}
-          COMPOSE_FILE: ${{ inputs.compose-file }}
+          DEPLOY_CONFIG: .platform/deploy.yml
+          ZQ_DEPLOY_ROOT: .zq-deploy-platform
         run: |
           set -euo pipefail
-          test -f "${COMPOSE_FILE}"
-          install -Dm644 "${COMPOSE_FILE}" "${MANIFEST_ROOT}/${SERVICE}/compose.yml"
-          echo "Applied compose manifest"
+          test -f "${DEPLOY_CONFIG}"
+          bash "${ZQ_DEPLOY_ROOT}/scripts/render_compose.sh" "${SERVICE}" "${DEPLOY_CONFIG}" "${MANIFEST_ROOT}/${SERVICE}/compose.yml"
+          echo "Rendered compose manifest"
 
       - name: Export image references
         shell: bash

@@ -1,0 +1,94 @@
+x-python: &python
+  image: ${DJANGO_IMAGE_REF:?DJANGO_IMAGE_REF is required}
+  restart: unless-stopped
+  init: true
+  env_file: ./.env
+  read_only: true
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,size=128m,mode=1777
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  networks:
+    - app-net
+
+services:
+  django:
+    <<: *python
+    expose: ["8000"]
+    depends_on:
+      redis:
+        condition: service_healthy
+      meili:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/', timeout=5).close()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    volumes:
+      - ${DATA_ROOT:?DATA_ROOT is required}/log:/app/logs:rw
+      - ${DATA_ROOT:?DATA_ROOT is required}/tmp:/app/tmp:rw
+
+  celeryworker:
+    <<: *python
+    entrypoint: ./start-celeryworker.sh
+    depends_on:
+      redis:
+        condition: service_healthy
+      meili:
+        condition: service_started
+    healthcheck:
+      disable: true
+    volumes:
+      - ${DATA_ROOT:?DATA_ROOT is required}/tmp:/app/tmp:rw
+
+  caddy:
+    image: ${CADDY_IMAGE_REF:?CADDY_IMAGE_REF is required}
+    restart: unless-stopped
+    depends_on:
+      django:
+        condition: service_healthy
+    networks:
+      - app-net
+      - traefik
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: traefik
+      traefik.http.routers.__ROUTER__.rule: Host(`${PUBLIC_HOST:?PUBLIC_HOST is required}`)
+      traefik.http.routers.__ROUTER__.entrypoints: websecure
+      traefik.http.routers.__ROUTER__.tls: "true"
+      traefik.http.routers.__ROUTER__.tls.certresolver: ziqiang-ali
+      traefik.http.services.__ROUTER__.loadbalancer.server.port: "80"
+
+  office:
+    image: ${OFFICE_IMAGE_REF:?OFFICE_IMAGE_REF is required}
+    restart: unless-stopped
+    networks: [app-net]
+    volumes:
+      - ${DATA_ROOT:?DATA_ROOT is required}/tmp:/root/server/data:rw
+
+  redis:
+    image: ${REDIS_IMAGE_REF:?REDIS_IMAGE_REF is required}
+    restart: unless-stopped
+    networks: [app-net]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --raw incr __production_redis_ping || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  meili:
+    image: ${MEILI_IMAGE_REF:?MEILI_IMAGE_REF is required}
+    restart: unless-stopped
+    environment:
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:?MEILI_MASTER_KEY is required}
+    networks: [app-net]
+    volumes:
+      - ${DATA_ROOT:?DATA_ROOT is required}/meili_data:/meili_data
+
+networks:
+  app-net:
+  traefik:
+    external: true

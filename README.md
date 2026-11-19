@@ -82,10 +82,11 @@ jobs:
 
 ## 服务器清单
 
-业务仓库提交 `.platform/compose.yml`，部署时 runner 会把它安装到服务器固定目录，并用 `RUNTIME_ENV` 生成 `.env`：
+业务仓库提交 `.platform/deploy.yml`，声明标准 preset。zq-deploy 用平台模板渲染 Compose，安装到服务器固定目录，并用 `RUNTIME_ENV` 生成 `.env`：
 
 ```text
-仓库: .platform/compose.yml
+仓库: .platform/deploy.yml
+平台模板: templates/<preset>.yml
 服务器: /etc/zq-deploy/deployments/<service>/compose.yml
 服务器: /etc/zq-deploy/deployments/<service>/.env
 ```
