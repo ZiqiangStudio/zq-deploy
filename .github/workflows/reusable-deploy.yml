@@ -7,6 +7,8 @@ on:
         required: false
       DOCKER_PASSWORD:
         required: false
+      RUNTIME_ENV:
+        required: false
     inputs:
       environment:
         description: GitHub Environment and deployment target.
@@ -114,6 +116,51 @@ jobs:
             fi
             printf '%s=%s\n' "${key}" "${ref}" >>"${GITHUB_ENV}"
           done < <(jq -r 'to_entries[] | [.key, .value] | @tsv' <<<"${IMAGE_REFS}")
+
+      - name: Apply runtime environment
+        shell: bash
+        env:
+          SERVICE: ${{ github.event.repository.name }}
+          MANIFEST_ROOT: ${{ inputs.manifest-root }}
+          RUNTIME_ENV: ${{ secrets.RUNTIME_ENV }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${RUNTIME_ENV}" ]]; then
+            echo "RUNTIME_ENV secret is not configured; keeping the existing .env"
+            exit 0
+          fi
+          directory="${MANIFEST_ROOT}/${SERVICE}"
+          env_file="${directory}/.env"
+          test -f "${env_file}" || { echo "missing runtime env file: ${env_file}" >&2; exit 1; }
+          python3 - "${env_file}" <<'PY'
+          import os
+          import re
+          import sys
+          from pathlib import Path
+
+          path = Path(sys.argv[1])
+          content = os.environ["RUNTIME_ENV"].replace("\r\n", "\n").replace("\r", "\n")
+          if not content.endswith("\n"):
+              content += "\n"
+
+          seen = set()
+          for raw in content.splitlines():
+              line = raw.rstrip("\r")
+              if not line.strip() or line.lstrip().startswith("#"):
+                  continue
+              key = line.split("=", 1)[0]
+              if not re.fullmatch(r"[A-Z][A-Z0-9_]*", key):
+                  raise SystemExit(f"invalid runtime env key: {key!r}")
+              if key in seen:
+                  raise SystemExit(f"duplicate runtime env key: {key}")
+              seen.add(key)
+
+          tmp = path.with_name(f".env.runtime.{os.getpid()}")
+          tmp.write_text(content, encoding="utf-8")
+          tmp.chmod(0o600)
+          os.replace(tmp, path)
+          PY
+          echo "Applied runtime environment"
 
       - name: Roll out compose stack
         shell: bash
