@@ -20,6 +20,7 @@
   -> reusable-container
   -> 在组织 runner 上构建并推送不可变镜像 digest
   -> reusable-deploy
+  -> 将仓库或 production Environment 的 RUNTIME_ENV Secret 写入 /etc/zq-deploy/deployments/<service>/.env
   -> 同一个 runner 执行 /etc/zq-deploy/deployments/<service>/compose.yml
   -> docker compose pull
   -> docker compose up -d --remove-orphans --force-recreate
@@ -27,7 +28,7 @@
   -> 写入 GitHub Deployment 状态
 ```
 
-每次 rollout 都强制重建容器，因为 Docker Compose 的配置哈希不包含 `.env` 文件内容，仅靠 `up -d` 会让环境变量更新停留在服务器文件上。
+运行时配置由仓库或 production Environment 的 `RUNTIME_ENV` Secret 提供。部署时 workflow 用其完整内容覆盖服务器 `.env`，每次 rollout 都强制重建容器，因为 Docker Compose 的配置哈希不包含 `.env` 文件内容，仅靠 `up -d` 会让环境变量更新停留在服务器文件上。没有配置该 Secret 的服务保留现有 `.env`。
 
 业务仓库不需要保存服务器地址、SSH 私钥或部署脚本；服务器上也不需要控制面、代理或 `deploy.sh`。
 
@@ -39,7 +40,7 @@
 [self-hosted, linux, x64, zq-deploy]
 ```
 
-runner 已注册在组织的 runner group 中，业务仓库只需要允许访问该 runner group，不需要为每个仓库安装或配置 runner。runner 用户需要能访问 Docker socket，并能读取 `/etc/zq-deploy/deployments/<service>/` 下的 compose 清单和 `.env`。
+runner 已注册在组织的 runner group 中，业务仓库只需要允许访问该 runner group，不需要为每个仓库安装或配置 runner。runner 用户需要能访问 Docker socket，并能读取 compose 清单、写入 `/etc/zq-deploy/deployments/<service>/` 下的 `.env`。
 
 runner 主机预装 Docker Engine、Docker Compose v2、Git、jq、curl，以及 Python 项目常用的 `build-essential`、`pkg-config`、`default-libmysqlclient-dev`、`libpq-dev`。Node、Python 等语言版本由 workflow 的 setup action 安装。
 

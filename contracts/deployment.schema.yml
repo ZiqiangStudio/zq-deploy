@@ -7,7 +7,7 @@ payload:
 deployment:
   runner: Organization runner with labels [self-hosted, linux, x64, zq-deploy].
   manifest: /etc/zq-deploy/deployments/<service>/compose.yml
-  command: docker compose pull, then docker compose up -d --remove-orphans --force-recreate, then poll docker compose ps until every service is running and healthy (300 second timeout).
+  command: write RUNTIME_ENV to the service .env when configured, docker compose pull, then docker compose up -d --remove-orphans --force-recreate, then poll docker compose ps until every service is running and healthy (300 second timeout).
 status:
   in_progress: Created before the compose rollout starts.
   success: All compose services are running and every configured healthcheck reports healthy.
@@ -15,4 +15,5 @@ status:
 security:
   - Business workflows never receive server hostnames, SSH keys, or server credentials.
   - Registry credentials come from DOCKER_USERNAME and DOCKER_PASSWORD secrets.
+  - Runtime environment values come from the RUNTIME_ENV secret and are written to the server .env during deployment.
   - Only immutable image references are deployed.

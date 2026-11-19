@@ -7,6 +7,8 @@ on:
         required: false
       DOCKER_PASSWORD:
         required: false
+      RUNTIME_ENV:
+        required: false
     inputs:
       images:
         description: JSON array of images to build or pin.
@@ -28,6 +30,10 @@ on:
         description: GitHub Environment and deployment target.
         type: string
         default: production
+      manifest-root:
+        description: Directory containing <service>/compose.yml on the runner.
+        type: string
+        default: /etc/zq-deploy/deployments
       validate-script:
         description: Project-local deployment contract validation script.
         type: string
@@ -235,6 +241,7 @@ jobs:
       environment: ${{ inputs.environment }}
       image-refs: ${{ needs.image.outputs.image-refs }}
       registry: ${{ inputs.registry }}
+      manifest-root: ${{ inputs.manifest-root }}
     permissions:
       contents: read
       deployments: write
