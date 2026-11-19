@@ -34,6 +34,10 @@ on:
         description: Directory containing <service>/compose.yml on the runner.
         type: string
         default: /etc/zq-deploy/deployments
+      compose-file:
+        description: Repository path to the compose manifest installed on the runner.
+        type: string
+        default: .platform/compose.yml
       validate-script:
         description: Project-local deployment contract validation script.
         type: string
@@ -242,6 +246,7 @@ jobs:
       image-refs: ${{ needs.image.outputs.image-refs }}
       registry: ${{ inputs.registry }}
       manifest-root: ${{ inputs.manifest-root }}
+      compose-file: ${{ inputs.compose-file }}
     permissions:
       contents: read
       deployments: write
