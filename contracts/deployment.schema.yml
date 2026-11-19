@@ -6,7 +6,7 @@ payload:
   image_refs: Object of logical image names to immutable registry references ending in @sha256:digest.
 deployment:
   runner: Organization runner with labels [self-hosted, linux, x64, zq-deploy].
-  manifest: /etc/zq-deploy/deployments/<service>/compose.yml, installed from the repository compose file before rollout.
+  manifest: /etc/zq-deploy/deployments/<service>/compose.yml, rendered from templates/<preset>.yml using .platform/deploy.yml before rollout.
   command: write RUNTIME_ENV to the service .env when configured, docker compose pull, then docker compose up -d --remove-orphans --force-recreate, then poll docker compose ps until every service is running and healthy (300 second timeout).
 status:
   in_progress: Created before the compose rollout starts.

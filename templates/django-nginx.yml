@@ -1,0 +1,62 @@
+x-backend: &backend
+  image: ${BACKEND_IMAGE_REF:?BACKEND_IMAGE_REF is required}
+  restart: unless-stopped
+  init: true
+  read_only: true
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,size=128m,mode=1777
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  networks:
+    - app-net
+
+services:
+  backend:
+    <<: *backend
+    env_file: ./.env
+    environment:
+      TZ: Asia/Shanghai
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000${BACKEND_HEALTHCHECK_PATH:-/health/ready/}"]
+      interval: 15s
+      timeout: 5s
+      start_period: 40s
+      retries: 10
+    mem_limit: 512m
+    cpus: 1.5
+    volumes:
+      - static:/app/staticfiles
+      - media:/app/media
+
+  frontend:
+    image: ${FRONTEND_IMAGE_REF:?FRONTEND_IMAGE_REF is required}
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - app-net
+      - traefik
+    mem_limit: 256m
+    volumes:
+      - static:/usr/share/nginx/static:ro
+      - media:/usr/share/nginx/media:ro
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: traefik
+      traefik.http.routers.__ROUTER__.rule: Host(`${PUBLIC_HOST:?PUBLIC_HOST is required}`)
+      traefik.http.routers.__ROUTER__.entrypoints: websecure
+      traefik.http.routers.__ROUTER__.tls: "true"
+      traefik.http.routers.__ROUTER__.tls.certresolver: ziqiang-ali
+      traefik.http.services.__ROUTER__.loadbalancer.server.port: "80"
+
+networks:
+  app-net:
+  traefik:
+    external: true
+
+volumes:
+  static:
+  media:
