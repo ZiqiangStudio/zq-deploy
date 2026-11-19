@@ -22,10 +22,12 @@
   -> reusable-deploy
   -> 同一个 runner 执行 /etc/zq-deploy/deployments/<service>/compose.yml
   -> docker compose pull
-  -> docker compose up -d --remove-orphans
+  -> docker compose up -d --remove-orphans --force-recreate
   -> 轮询 docker compose ps，等待全部服务 running / healthy（最多 300 秒）
   -> 写入 GitHub Deployment 状态
 ```
+
+每次 rollout 都强制重建容器，因为 Docker Compose 的配置哈希不包含 `.env` 文件内容，仅靠 `up -d` 会让环境变量更新停留在服务器文件上。
 
 业务仓库不需要保存服务器地址、SSH 私钥或部署脚本；服务器上也不需要控制面、代理或 `deploy.sh`。
 
