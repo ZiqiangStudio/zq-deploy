@@ -38,6 +38,10 @@ on:
         description: Project-local deployment contract validation script.
         type: string
         default: ""
+      preflight-script:
+        description: Application-specific preflight script run against the staged runtime environment.
+        type: string
+        default: ""
     outputs:
       image-refs:
         description: JSON object mapping image names to immutable refs.
@@ -258,6 +262,7 @@ jobs:
       image-refs: ${{ needs.image.outputs.image-refs }}
       registry: ${{ inputs.registry }}
       manifest-root: ${{ inputs.manifest-root }}
+      preflight-script: ${{ inputs.preflight-script }}
     permissions:
       contents: read
       deployments: write
