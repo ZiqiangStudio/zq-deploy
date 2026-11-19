@@ -26,6 +26,10 @@ on:
         description: Directory containing <service>/compose.yml on the runner.
         type: string
         default: /etc/zq-deploy/deployments
+      compose-file:
+        description: Repository path to the compose manifest installed on the runner.
+        type: string
+        default: .platform/compose.yml
 
 permissions:
   contents: read
@@ -102,6 +106,23 @@ jobs:
             });
             core.setOutput('id', deployment.id);
 
+      - name: Check out deployment source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Apply compose manifest
+        shell: bash
+        env:
+          SERVICE: ${{ github.event.repository.name }}
+          MANIFEST_ROOT: ${{ inputs.manifest-root }}
+          COMPOSE_FILE: ${{ inputs.compose-file }}
+        run: |
+          set -euo pipefail
+          test -f "${COMPOSE_FILE}"
+          install -Dm644 "${COMPOSE_FILE}" "${MANIFEST_ROOT}/${SERVICE}/compose.yml"
+          echo "Applied compose manifest"
+
       - name: Export image references
         shell: bash
         env:
@@ -131,7 +152,8 @@ jobs:
           fi
           directory="${MANIFEST_ROOT}/${SERVICE}"
           env_file="${directory}/.env"
-          test -f "${env_file}" || { echo "missing runtime env file: ${env_file}" >&2; exit 1; }
+          install -dm700 "${directory}"
+          install -m600 /dev/null "${env_file}"
           python3 - "${env_file}" <<'PY'
           import os
           import re

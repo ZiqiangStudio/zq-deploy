@@ -82,12 +82,12 @@ jobs:
 
 ## 服务器清单
 
-每个服务在服务器上只需要一个目录：
+业务仓库提交 `.platform/compose.yml`，部署时 runner 会把它安装到服务器固定目录，并用 `RUNTIME_ENV` 生成 `.env`：
 
 ```text
-/etc/zq-deploy/deployments/<service>/
-  compose.yml
-  .env
+仓库: .platform/compose.yml
+服务器: /etc/zq-deploy/deployments/<service>/compose.yml
+服务器: /etc/zq-deploy/deployments/<service>/.env
 ```
 
 `<service>` 等于 GitHub 仓库名。`compose.yml` 必须设置 `name: <service>`，并使用不可变镜像变量：
