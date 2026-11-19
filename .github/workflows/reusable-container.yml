@@ -105,7 +105,7 @@ jobs:
 
           while IFS= read -r file; do
             if grep -E -i "${disallowed_regex}" "${file}" >/dev/null 2>&1; then
-              echo "::error file=${file}::检测到禁止的本地自建数据库镜像。生产环境数据库必须使用自强统一的阿里云 RDS MySQL，缓存使用服务器统一 redis-shared，严禁在生产配置中自建数据库容器。"
+              echo "::error file=${file}::检测到禁止的本地自建数据库镜像。生产环境数据库必须使用自强统一的阿里云 RDS（MySQL 或 PostgreSQL），缓存使用服务器统一 redis-shared，严禁在生产配置中自建数据库容器。"
               failed=1
             fi
           done < <(find . -maxdepth 3 -type f \( -name "*compose*.yml" -o -name "*compose*.yaml" \) ! -path "*/.*/*" 2>/dev/null || true)
