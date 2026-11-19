@@ -128,7 +128,8 @@ jobs:
           manifest="${directory}/compose.yml"
           test -f "${manifest}" || { echo "missing deployment manifest: ${manifest}" >&2; exit 1; }
           docker compose --project-directory "${directory}" --file "${manifest}" pull
-          docker compose --project-directory "${directory}" --file "${manifest}" up -d --remove-orphans
+          # env_file contents are excluded from the compose config hash, so recreate on every rollout.
+          docker compose --project-directory "${directory}" --file "${manifest}" up -d --remove-orphans --force-recreate
 
           for attempt in $(seq 1 60); do
             if docker compose --project-directory "${directory}" --file "${manifest}" ps --all --format json \

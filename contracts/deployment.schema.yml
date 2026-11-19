@@ -7,7 +7,7 @@ payload:
 deployment:
   runner: Organization runner with labels [self-hosted, linux, x64, zq-deploy].
   manifest: /etc/zq-deploy/deployments/<service>/compose.yml
-  command: docker compose pull, then docker compose up -d --remove-orphans, then poll docker compose ps until every service is running and healthy (300 second timeout).
+  command: docker compose pull, then docker compose up -d --remove-orphans --force-recreate, then poll docker compose ps until every service is running and healthy (300 second timeout).
 status:
   in_progress: Created before the compose rollout starts.
   success: All compose services are running and every configured healthcheck reports healthy.
