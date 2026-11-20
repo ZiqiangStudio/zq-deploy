@@ -204,3 +204,15 @@ jobs:
         env:
           IMAGE_REFS: ${{ steps.build.outputs.image-refs }}
         run: bash "${{ inputs.validate-script }}"
+
+      - name: Remove pull request build images
+        if: ${{ always() && github.event_name == 'pull_request' }}
+        shell: bash
+        env:
+          IMAGE_REFS: ${{ steps.build.outputs.image-refs }}
+        run: |
+          set -Eeuo pipefail
+          [[ -n "${IMAGE_REFS}" ]] || exit 0
+          while IFS= read -r ref; do
+            docker image rm -f "${ref}" >/dev/null 2>&1 || true
+          done < <(jq -r '.[]' <<<"${IMAGE_REFS}")
