@@ -9,9 +9,7 @@
 - `.github/workflows/reusable-pr-title.yml`：组织统一的 PR 标题与正文校验。
 - `.github/workflows/reusable-backup-restore.yml`：备份与恢复检查。
 - `contracts/deployment.schema.yml`：GitHub Deployment 载荷约定。
-- `templates/compose/compose.yml`：服务器 compose 清单模板。
 - `backup/`：备份策略与恢复说明。
-- `examples/`：业务仓库最小调用示例。
 
 ## 部署链路
 
@@ -20,9 +18,9 @@
   -> reusable-container
   -> 在组织 runner 上构建并推送不可变镜像 digest
   -> reusable-deploy
-  -> 将 RUNTIME_ENV 写入 /etc/zq-deploy/deployments/<service>/.env.candidate
-  -> 用候选配置和本次镜像运行 preset 标准部署检查
-  -> 通过后原子提升 .env，再执行 docker compose pull
+  -> 将仓库的 .platform/compose.yml 和 RUNTIME_ENV 暂存为候选文件
+  -> 用候选配置和本次镜像执行标准部署检查
+  -> 通过后原子提升 compose.yml 和 .env，再执行 docker compose pull
   -> docker compose up -d --remove-orphans --force-recreate
   -> 轮询 docker compose ps，等待全部服务 running / healthy（最多 300 秒）
   -> 写入 GitHub Deployment 状态
@@ -30,7 +28,7 @@
 
 运行时配置由仓库或 production Environment 的 `RUNTIME_ENV` Secret 提供。部署时 workflow 用其完整内容覆盖服务器 `.env`，每次 rollout 都强制重建容器，因为 Docker Compose 的配置哈希不包含 `.env` 文件内容，仅靠 `up -d` 会让环境变量更新停留在服务器文件上。
 
-Django preset 使用统一的应用契约：镜像必须提供 `python manage.py check_deployment`。平台在候选配置提升前，用本次镜像和 `.env.candidate` 在一次性容器里执行该命令；检查失败时保留现有 `.env` 和容器。命令只输出固定状态文本，不输出运行时配置值。业务仓库无需提供服务器预检脚本，也无需了解 staging 目录或 Compose 输出格式。
+部署检查使用统一的应用契约：Compose 中恰好一个服务声明 `zq.deploy.check: "true"`，并在该服务镜像内提供 `python manage.py check_deployment`。平台在候选文件提升前，用本次镜像和 `.env` 在一次性容器里执行该命令；可以通过 `zq.deploy.check.command` 覆盖默认命令。检查失败时保留现有 `compose.yml`、`.env` 和容器。命令只输出固定状态文本，不输出运行时配置值。业务仓库无需提供服务器预检脚本，也无需了解 staging 目录或 Compose 输出格式。
 
 业务仓库不需要保存服务器地址、SSH 私钥或部署脚本；服务器上也不需要控制面、代理或 `deploy.sh`。
 
@@ -80,26 +78,23 @@ jobs:
 - `digest`：`build: false` 时必填，格式 `sha256:<64位十六进制>`。
 - `context` / `dockerfile`：构建上下文和 Dockerfile 路径。
 
-Django preset 要求应用镜像实现 `python manage.py check_deployment`。该命令使用当前环境完成只读部署检查，失败时返回非零状态；只输出固定状态文本，避免泄露 Secret。平台会在候选 `.env` 提升前自动执行，业务仓库无需配置 `preflight-script`。
+Compose 的检查服务必须实现 `python manage.py check_deployment`。该命令使用当前环境完成只读部署检查，失败时返回非零状态；只输出固定状态文本，避免泄露 Secret。平台会在候选文件提升前自动执行。
 
 镜像会推送到 `registry.cn-hangzhou.aliyuncs.com/ziqiang_studio`，使用组织或仓库 Secrets 中的 `DOCKER_USERNAME` 和 `DOCKER_PASSWORD`。PR 只构建和校验，不登录 registry、不推送、不部署。
 
 ## 服务器清单
 
-业务仓库提交 `.platform/deploy.yml`，声明标准 preset。zq-deploy 用平台模板渲染 Compose，安装到服务器固定目录，并用 `RUNTIME_ENV` 生成 `.env`：
+业务仓库提交 `.platform/compose.yml`，声明自己的服务拓扑。zq-deploy 校验候选 Compose，把它和 `RUNTIME_ENV` 一起安装到服务器固定目录：
 
 ```text
-仓库: .platform/deploy.yml
-平台模板: templates/<preset>.yml
+仓库: .platform/compose.yml
 服务器: /etc/zq-deploy/deployments/<service>/compose.yml
 服务器: /etc/zq-deploy/deployments/<service>/.env
 ```
 
-`<service>` 等于 GitHub 仓库名。`compose.yml` 必须设置 `name: <service>`，并使用不可变镜像变量：
+`<service>` 等于 GitHub 仓库名。平台通过 `COMPOSE_PROJECT_NAME` 注入项目名，清单里不写 `name` 或 `container_name`，并使用构建输出的不可变镜像变量：
 
 ```yaml
-name: example-service
-
 services:
   app:
     image: ${IMAGE_REF:?IMAGE_REF is required}
@@ -107,6 +102,8 @@ services:
     env_file: ./.env
     networks: [app-net, traefik]
     labels:
+      zq.deploy.check: "true"
+      zq.deploy.check.command: "python manage.py check_deployment"
       traefik.enable: "true"
       traefik.docker.network: traefik
       traefik.http.routers.example.rule: Host(`example.ziqiang.net.cn`)
@@ -121,8 +118,4 @@ networks:
     external: true
 ```
 
-多镜像服务按 `name` 使用对应变量，例如 `backend` 和 `frontend` 对应 `${BACKEND_IMAGE_REF}` 和 `${FRONTEND_IMAGE_REF}`。域名、端口、健康检查和 `restart: unless-stopped` 都写在这份 compose 清单里。
-
-模板见 `templates/compose/compose.yml`，可直接复制后替换服务名、域名和端口。
-
-从旧的独立 compose 项目迁移时，先停掉旧项目并保留数据目录，再触发首次部署。新清单沿用原 `container_name` 时，Docker 会因同名容器拒绝启动。
+多镜像服务按 `name` 使用对应变量，例如 `backend` 和 `frontend` 对应 `${BACKEND_IMAGE_REF}` 和 `${FRONTEND_IMAGE_REF}`。域名、端口、健康检查和 `restart: unless-stopped` 都写在项目自己的 compose 清单里。

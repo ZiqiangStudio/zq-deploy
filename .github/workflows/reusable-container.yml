@@ -34,6 +34,10 @@ on:
         description: Directory containing <service>/compose.yml on the runner.
         type: string
         default: /etc/zq-deploy/deployments
+      compose-file:
+        description: Repository-relative compose file that defines the service topology.
+        type: string
+        default: .platform/compose.yml
       validate-script:
         description: Project-local deployment contract validation script.
         type: string
@@ -54,14 +58,6 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v7
-
-      - name: Check out deployment platform
-        uses: actions/checkout@v7
-        with:
-          repository: ZiqiangStudio/zq-deploy
-          ref: main
-          path: .zq-deploy-platform
-          persist-credentials: false
 
       - name: Validate naming conventions
         env:
@@ -92,7 +88,6 @@ jobs:
 
           while IFS= read -r compose_file; do
             [[ -f "${compose_file}" ]] || continue
-            [[ "${compose_file}" =~ /templates/ ]] && continue
             proj_name=$(grep -E '^[[:space:]]*name:[[:space:]]*' "${compose_file}" | head -n 1 | awk '{print $2}' | tr -d '"'\'' ' || true)
             if [[ -n "${proj_name}" ]] && ! [[ "${proj_name}" =~ ^\$ ]]; then
               proj_clean="${proj_name//_/-}"
@@ -101,7 +96,7 @@ jobs:
                 exit 1
               fi
             fi
-          done < <(find . -maxdepth 3 -type f \( -name "*compose*.yml" -o -name "*compose*.yaml" \) ! -path "*/.*/*" 2>/dev/null || true)
+          done < <(find . -maxdepth 3 -type f \( -name "*compose*.yml" -o -name "*compose*.yaml" \) ! -path "./.git/*" ! -path "*/node_modules/*" 2>/dev/null || true)
           echo "✅ 统一服务与容器命名契约校验通过"
 
       - name: Check no local database containers
@@ -116,7 +111,7 @@ jobs:
               echo "::error file=${file}::检测到禁止的本地自建数据库镜像。生产环境数据库必须使用自强统一的阿里云 RDS（MySQL 或 PostgreSQL），缓存使用服务器统一 redis-shared，严禁在生产配置中自建数据库容器。"
               failed=1
             fi
-          done < <(find . -maxdepth 3 -type f \( -name "*compose*.yml" -o -name "*compose*.yaml" \) ! -path "*/.*/*" 2>/dev/null || true)
+          done < <(find . -maxdepth 3 -type f \( -name "*compose*.yml" -o -name "*compose*.yaml" \) ! -path "./.git/*" ! -path "*/node_modules/*" 2>/dev/null || true)
 
           while IFS= read -r file; do
             if grep -E -i "${dockerfile_regex}" "${file}" >/dev/null 2>&1; then
@@ -141,14 +136,6 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v7
-
-      - name: Check out deployment platform
-        uses: actions/checkout@v7
-        with:
-          repository: ZiqiangStudio/zq-deploy
-          ref: main
-          path: .zq-deploy-platform
-          persist-credentials: false
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -258,6 +245,7 @@ jobs:
       image-refs: ${{ needs.image.outputs.image-refs }}
       registry: ${{ inputs.registry }}
       manifest-root: ${{ inputs.manifest-root }}
+      compose-file: ${{ inputs.compose-file }}
     permissions:
       contents: read
       deployments: write
