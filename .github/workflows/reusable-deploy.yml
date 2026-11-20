@@ -26,10 +26,6 @@ on:
         description: Directory containing <service>/compose.yml on the runner.
         type: string
         default: /etc/zq-deploy/deployments
-      preflight-script:
-        description: Application-specific preflight script run against the staged runtime environment.
-        type: string
-        default: ""
 
 permissions:
   contents: read
@@ -195,20 +191,14 @@ jobs:
         env:
           SERVICE: ${{ github.event.repository.name }}
           MANIFEST_ROOT: ${{ inputs.manifest-root }}
-          PREFLIGHT_SCRIPT: ${{ inputs.preflight-script }}
+          DEPLOY_CONFIG: .platform/deploy.yml
+          IMAGE_REFS: ${{ inputs.image-refs }}
+          PLATFORM_ROOT: ${{ github.workspace }}/.zq-deploy-platform
         run: |
           set -euo pipefail
-          if [[ -z "${PREFLIGHT_SCRIPT}" ]]; then
-            echo "No application preflight script configured"
-            exit 0
-          fi
-          directory="${MANIFEST_ROOT}/${SERVICE}"
-          stage="$(mktemp -d "${directory}/.staging.XXXXXX")"
-          trap 'rm -rf "${stage}"' EXIT
-          mkdir -p "${stage}/${SERVICE}"
-          cp "${directory}/compose.yml" "${stage}/${SERVICE}/compose.yml"
-          install -m600 "${directory}/.env.candidate" "${stage}/${SERVICE}/.env"
-          ZQ_DEPLOY_SERVICE="${SERVICE}" ZQ_DEPLOY_ROOT="${stage}" bash "${GITHUB_WORKSPACE}/${PREFLIGHT_SCRIPT}"
+          bash "${PLATFORM_ROOT}/scripts/check_candidate.sh" \
+            "${SERVICE}" "${DEPLOY_CONFIG}" \
+            "${MANIFEST_ROOT}/${SERVICE}/.env.candidate" "${IMAGE_REFS}"
 
       - name: Promote runtime environment
         shell: bash
