@@ -26,6 +26,10 @@ on:
         description: Directory containing <service>/compose.yml on the runner.
         type: string
         default: /etc/zq-deploy/deployments
+      compose-file:
+        description: Repository-relative compose file that defines the service topology.
+        type: string
+        default: .platform/compose.yml
 
 permissions:
   contents: read
@@ -115,18 +119,17 @@ jobs:
           path: .zq-deploy-platform
           persist-credentials: false
 
-      - name: Render compose manifest
+      - name: Stage compose manifest
         shell: bash
         env:
           SERVICE: ${{ github.event.repository.name }}
           MANIFEST_ROOT: ${{ inputs.manifest-root }}
-          DEPLOY_CONFIG: .platform/deploy.yml
-          ZQ_DEPLOY_ROOT: .zq-deploy-platform
+          COMPOSE_FILE: ${{ inputs.compose-file }}
         run: |
           set -euo pipefail
-          test -f "${DEPLOY_CONFIG}"
-          bash "${ZQ_DEPLOY_ROOT}/scripts/render_compose.sh" "${SERVICE}" "${DEPLOY_CONFIG}" "${MANIFEST_ROOT}/${SERVICE}/compose.yml"
-          echo "Rendered compose manifest"
+          test -f "${COMPOSE_FILE}" || { echo "missing compose file: ${COMPOSE_FILE}" >&2; exit 1; }
+          install -Dm644 "${COMPOSE_FILE}" "${MANIFEST_ROOT}/${SERVICE}/compose.yml.candidate"
+          echo "Staged compose manifest"
 
       - name: Export image references
         shell: bash
@@ -191,16 +194,17 @@ jobs:
         env:
           SERVICE: ${{ github.event.repository.name }}
           MANIFEST_ROOT: ${{ inputs.manifest-root }}
-          DEPLOY_CONFIG: .platform/deploy.yml
-          IMAGE_REFS: ${{ inputs.image-refs }}
           PLATFORM_ROOT: ${{ github.workspace }}/.zq-deploy-platform
         run: |
           set -euo pipefail
-          bash "${PLATFORM_ROOT}/scripts/check_candidate.sh" \
-            "${SERVICE}" "${DEPLOY_CONFIG}" \
-            "${MANIFEST_ROOT}/${SERVICE}/.env.candidate" "${IMAGE_REFS}"
+          directory="${MANIFEST_ROOT}/${SERVICE}"
+          stage="$(mktemp -d "${directory}/.staging.XXXXXX")"
+          trap 'rm -rf "${stage}"' EXIT
+          cp "${directory}/compose.yml.candidate" "${stage}/compose.yml"
+          install -m600 "${directory}/.env.candidate" "${stage}/.env"
+          bash "${PLATFORM_ROOT}/scripts/check_candidate.sh" "${SERVICE}" "${stage}"
 
-      - name: Promote runtime environment
+      - name: Promote deployment files
         shell: bash
         env:
           SERVICE: ${{ github.event.repository.name }}
@@ -209,17 +213,19 @@ jobs:
           set -euo pipefail
           directory="${MANIFEST_ROOT}/${SERVICE}"
           test -s "${directory}/.env.candidate" || { echo "missing staged runtime environment" >&2; exit 1; }
+          test -s "${directory}/compose.yml.candidate" || { echo "missing staged compose manifest" >&2; exit 1; }
+          mv -f "${directory}/compose.yml.candidate" "${directory}/compose.yml"
           mv -f "${directory}/.env.candidate" "${directory}/.env"
           chmod 600 "${directory}/.env"
-          echo "Promoted runtime environment"
+          echo "Promoted deployment files"
 
-      - name: Clean stale staged runtime
+      - name: Clean stale staged files
         if: ${{ always() }}
         shell: bash
         env:
           SERVICE: ${{ github.event.repository.name }}
           MANIFEST_ROOT: ${{ inputs.manifest-root }}
-        run: rm -f "${MANIFEST_ROOT}/${SERVICE}/.env.candidate"
+        run: rm -f "${MANIFEST_ROOT}/${SERVICE}/.env.candidate" "${MANIFEST_ROOT}/${SERVICE}/compose.yml.candidate"
 
       - name: Roll out compose stack
         shell: bash

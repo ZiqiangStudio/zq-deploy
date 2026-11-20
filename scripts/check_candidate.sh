@@ -2,36 +2,30 @@
 set -Eeuo pipefail
 
 service="$1"
-config="$2"
-env_file="$3"
-image_refs="$4"
+stage_dir="$2"
 
-preset="$(sed -n 's/^preset:[[:space:]]*//p' "${config}" | head -n 1 | tr -d '\r')"
-if [[ ! "${preset}" =~ ^[a-z0-9-]+$ ]]; then
-  echo "Invalid preset in ${config}" >&2
+[[ -n "${service}" ]] || { echo "Service name is required" >&2; exit 1; }
+[[ -d "${stage_dir}" ]] || { echo "Staging directory is missing" >&2; exit 1; }
+[[ -f "${stage_dir}/compose.yml" ]] || { echo "Staged compose file is missing" >&2; exit 1; }
+[[ -s "${stage_dir}/.env" ]] || { echo "Staged runtime environment is missing" >&2; exit 1; }
+
+export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-${service}}"
+config_file="${stage_dir}/compose.json"
+docker compose --project-directory "${stage_dir}" --env-file "${stage_dir}/.env" --file "${stage_dir}/compose.yml" config --format json >"${config_file}"
+
+check_services="$(jq -r '.services | to_entries[] | select(.value.labels["zq.deploy.check"] == "true") | .key' "${config_file}")"
+check_count="$(grep -c . <<<"${check_services}" || true)"
+if [[ "${check_count}" -ne 1 ]]; then
+  echo "Compose must declare exactly one service with label zq.deploy.check=true" >&2
   exit 1
 fi
 
-case "${preset}" in
-  django-web|django-nginx)
-    image_key=backend
-    ;;
-  django-suite)
-    image_key=django
-    ;;
-  *)
-    echo "No standard deployment check for preset ${preset}"
-    exit 0
-    ;;
-esac
-
-image="$(jq -er --arg key "${image_key}" '.[$key]' <<<"${image_refs}")"
-[[ -n "${image}" ]] || { echo "Missing ${image_key} image reference" >&2; exit 1; }
-[[ -s "${env_file}" ]] || { echo "Missing staged runtime environment" >&2; exit 1; }
+check_command="$(jq -r --arg name "${check_services}" '.services[$name].labels["zq.deploy.check.command"] // "python manage.py check_deployment"' "${config_file}")"
+image="$(jq -r --arg name "${check_services}" '.services[$name].image' "${config_file}")"
+[[ -n "${image}" && "${image}" != "null" ]] || { echo "Deployment check image is missing" >&2; exit 1; }
 
 log="$(mktemp)"
 trap 'rm -f "${log}"' EXIT
-
 if ! timeout --signal=TERM --kill-after=10s 180s \
   docker run --rm \
     --network host \
@@ -39,10 +33,10 @@ if ! timeout --signal=TERM --kill-after=10s 180s \
     --tmpfs /tmp:rw,noexec,nosuid,size=128m,mode=1777 \
     --cap-drop ALL \
     --security-opt no-new-privileges:true \
-    --env-file "${env_file}" \
-    "${image}" python manage.py check_deployment >"${log}" 2>&1; then
-  echo "Standard deployment check failed for preset ${preset} (service ${service})" >&2
+    --env-file "${stage_dir}/.env" \
+    "${image}" sh -lc "${check_command}" >"${log}" 2>&1; then
+  echo "Deployment check failed for service ${service}" >&2
   exit 1
 fi
 
-echo "Standard deployment check passed for preset ${preset} (service ${service})"
+echo "Deployment check passed for service ${service}"
