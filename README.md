@@ -20,15 +20,17 @@
   -> reusable-container
   -> 在组织 runner 上构建并推送不可变镜像 digest
   -> reusable-deploy
-  -> 将仓库或 production Environment 的 RUNTIME_ENV Secret 写入 /etc/zq-deploy/deployments/<service>/.env
-  -> 同一个 runner 执行 /etc/zq-deploy/deployments/<service>/compose.yml
-  -> docker compose pull
+  -> 将 RUNTIME_ENV 写入 /etc/zq-deploy/deployments/<service>/.env.candidate
+  -> 用候选配置和本次镜像运行 preset 标准部署检查
+  -> 通过后原子提升 .env，再执行 docker compose pull
   -> docker compose up -d --remove-orphans --force-recreate
   -> 轮询 docker compose ps，等待全部服务 running / healthy（最多 300 秒）
   -> 写入 GitHub Deployment 状态
 ```
 
-运行时配置由仓库或 production Environment 的 `RUNTIME_ENV` Secret 提供。部署时 workflow 用其完整内容覆盖服务器 `.env`，每次 rollout 都强制重建容器，因为 Docker Compose 的配置哈希不包含 `.env` 文件内容，仅靠 `up -d` 会让环境变量更新停留在服务器文件上。没有配置该 Secret 的服务保留现有 `.env`。
+运行时配置由仓库或 production Environment 的 `RUNTIME_ENV` Secret 提供。部署时 workflow 用其完整内容覆盖服务器 `.env`，每次 rollout 都强制重建容器，因为 Docker Compose 的配置哈希不包含 `.env` 文件内容，仅靠 `up -d` 会让环境变量更新停留在服务器文件上。
+
+Django preset 使用统一的应用契约：镜像必须提供 `python manage.py check_deployment`。平台在候选配置提升前，用本次镜像和 `.env.candidate` 在一次性容器里执行该命令；检查失败时保留现有 `.env` 和容器。命令只输出固定状态文本，不输出运行时配置值。业务仓库无需提供服务器预检脚本，也无需了解 staging 目录或 Compose 输出格式。
 
 业务仓库不需要保存服务器地址、SSH 私钥或部署脚本；服务器上也不需要控制面、代理或 `deploy.sh`。
 
@@ -77,6 +79,8 @@ jobs:
 - `build`：默认 `true`；`false` 表示引用固定 digest 的依赖镜像。
 - `digest`：`build: false` 时必填，格式 `sha256:<64位十六进制>`。
 - `context` / `dockerfile`：构建上下文和 Dockerfile 路径。
+
+Django preset 要求应用镜像实现 `python manage.py check_deployment`。该命令使用当前环境完成只读部署检查，失败时返回非零状态；只输出固定状态文本，避免泄露 Secret。平台会在候选 `.env` 提升前自动执行，业务仓库无需配置 `preflight-script`。
 
 镜像会推送到 `registry.cn-hangzhou.aliyuncs.com/ziqiang_studio`，使用组织或仓库 Secrets 中的 `DOCKER_USERNAME` 和 `DOCKER_PASSWORD`。PR 只构建和校验，不登录 registry、不推送、不部署。
 
