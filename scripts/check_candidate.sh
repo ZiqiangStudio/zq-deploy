@@ -27,14 +27,8 @@ image="$(jq -r --arg name "${check_services}" '.services[$name].image' "${config
 log="$(mktemp)"
 trap 'rm -f "${log}"' EXIT
 if ! timeout --signal=TERM --kill-after=10s 180s \
-  docker run --rm \
-    --network host \
-    --read-only \
-    --tmpfs /tmp:rw,noexec,nosuid,size=128m,mode=1777 \
-    --cap-drop ALL \
-    --security-opt no-new-privileges:true \
-    --env-file "${stage_dir}/.env" \
-    "${image}" sh -lc "${check_command}" >"${log}" 2>&1; then
+  docker compose --project-directory "${stage_dir}" --env-file "${stage_dir}/.env" --file "${stage_dir}/compose.yml" \
+    run --rm --no-deps -T --entrypoint /bin/sh "${check_services}" -c "${check_command}" >"${log}" 2>&1; then
   echo "Deployment check failed for service ${service}" >&2
   exit 1
 fi
