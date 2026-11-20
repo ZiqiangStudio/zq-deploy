@@ -245,6 +245,8 @@ jobs:
           for attempt in $(seq 1 60); do
             if docker compose --project-directory "${directory}" --file "${manifest}" ps --all --format json \
               | jq -s -e '(if length == 1 and (.[0] | type == "array") then .[0] else . end) | length > 0 and all(.[]; .State == "running" and ((.Health // "") == "" or .Health == "healthy"))' >/dev/null; then
+              # Recreated containers leave the previous digest image unreferenced.
+              docker image prune -f >/dev/null 2>&1 || true
               docker compose --project-directory "${directory}" --file "${manifest}" ps
               exit 0
             fi
