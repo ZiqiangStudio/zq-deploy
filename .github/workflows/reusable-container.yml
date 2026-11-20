@@ -1,4 +1,4 @@
-name: Reusable container build and deployment
+name: Reusable container build
 
 on:
   workflow_call:
@@ -6,8 +6,6 @@ on:
       DOCKER_USERNAME:
         required: false
       DOCKER_PASSWORD:
-        required: false
-      RUNTIME_ENV:
         required: false
     inputs:
       images:
@@ -22,24 +20,8 @@ on:
         description: Container registry namespace.
         type: string
         default: ziqiang_studio
-      deploy:
-        description: Deploy the compose stack after publishing images.
-        type: boolean
-        default: true
-      environment:
-        description: GitHub Environment and deployment target.
-        type: string
-        default: production
-      manifest-root:
-        description: Directory containing <service>/compose.yml on the runner.
-        type: string
-        default: /etc/zq-deploy/deployments
-      compose-file:
-        description: Repository-relative compose file that defines the service topology.
-        type: string
-        default: .platform/compose.yml
       validate-script:
-        description: Project-local deployment contract validation script.
+        description: Project-local image validation script, run on pull requests.
         type: string
         default: ""
     outputs:
@@ -49,12 +31,14 @@ on:
 
 permissions:
   contents: read
-  deployments: write
 
 jobs:
-  validate:
-    name: Validate project and deployment contracts
+  image:
+    name: Validate and build images
     runs-on: [self-hosted, linux, x64, zq-deploy]
+    timeout-minutes: 30
+    outputs:
+      image-refs: ${{ steps.build.outputs.image-refs }}
     steps:
       - name: Check out source
         uses: actions/checkout@v7
@@ -124,18 +108,6 @@ jobs:
             exit 1
           fi
           echo "✅ 无本地自建数据库校验通过"
-
-  image:
-    needs: validate
-    if: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
-    name: Build and publish images
-    runs-on: [self-hosted, linux, x64, zq-deploy]
-    timeout-minutes: 30
-    outputs:
-      image-refs: ${{ steps.build.outputs.image-refs }}
-    steps:
-      - name: Check out source
-        uses: actions/checkout@v7
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -212,8 +184,6 @@ jobs:
               --metadata-file "${metadata}" \
               "${attest_args[@]}" \
               "${output_args[@]}" \
-              --cache-from type=gha \
-              --cache-to type=gha,mode=max \
               "${proxy_args[@]}" \
               "${context}"
 
@@ -234,18 +204,3 @@ jobs:
         env:
           IMAGE_REFS: ${{ steps.build.outputs.image-refs }}
         run: bash "${{ inputs.validate-script }}"
-
-  deploy:
-    if: ${{ inputs.deploy && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}
-    needs: image
-    uses: ./.github/workflows/reusable-deploy.yml
-    secrets: inherit
-    with:
-      environment: ${{ inputs.environment }}
-      image-refs: ${{ needs.image.outputs.image-refs }}
-      registry: ${{ inputs.registry }}
-      manifest-root: ${{ inputs.manifest-root }}
-      compose-file: ${{ inputs.compose-file }}
-    permissions:
-      contents: read
-      deployments: write

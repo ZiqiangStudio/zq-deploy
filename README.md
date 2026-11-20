@@ -15,9 +15,8 @@
 
 ```text
 业务仓库 push main
-  -> reusable-container
-  -> 在组织 runner 上构建并推送不可变镜像 digest
-  -> reusable-deploy
+  -> reusable-container（校验命名与数据库约束，构建并推送不可变镜像 digest）
+  -> reusable-deploy（业务仓库在 needs 中声明依赖）
   -> 将仓库的 .platform/compose.yml 和 RUNTIME_ENV 暂存为候选文件
   -> 用候选配置和本次镜像执行标准部署检查
   -> 通过后原子提升 compose.yml 和 .env，再执行 docker compose pull
@@ -25,6 +24,8 @@
   -> 轮询 docker compose ps，等待全部服务 running / healthy（最多 300 秒）
   -> 写入 GitHub Deployment 状态
 ```
+
+构建和部署是两个独立的 reusable workflow。业务仓库在自己的 workflow 里用 `needs` 声明顺序，因此测试和镜像构建可以并行，部署仍然等待两者完成。
 
 运行时配置由仓库或 production Environment 的 `RUNTIME_ENV` Secret 提供。部署时 workflow 用其完整内容覆盖服务器 `.env`，每次 rollout 都强制重建容器，因为 Docker Compose 的配置哈希不包含 `.env` 文件内容，仅靠 `up -d` 会让环境变量更新停留在服务器文件上。
 
@@ -53,22 +54,31 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
   deployments: write
 
 jobs:
-  deploy:
+  image:
     uses: ZiqiangStudio/zq-deploy/.github/workflows/reusable-container.yml@main
     secrets: inherit
     with:
       images: >-
         [{"name":"backend","image":"example-backend","context":"backend","dockerfile":"backend/Dockerfile"}]
-      deploy: true
-      environment: production
       validate-script: .platform/validate.sh
+
+  deploy:
+    needs: image
+    if: ${{ github.event_name != 'pull_request' }}
+    uses: ZiqiangStudio/zq-deploy/.github/workflows/reusable-deploy.yml@main
+    secrets: inherit
+    with:
+      image-refs: ${{ needs.image.outputs.image-refs }}
 ```
+
+有测试任务时把测试也放进 `deploy` 的 `needs`，构建与测试会并行，部署等两者都通过。部署目标环境由 `reusable-deploy` 的 `environment` 输入控制，默认 `production`；需要 GitHub Environment 保护规则时在调用方补 `environment: production`。
 
 镜像定义支持：
 
